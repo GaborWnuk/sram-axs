@@ -102,8 +102,13 @@ export {
 } from "./axs/srambond.js";
 
 // Self-healing live gear reading (auto-reconnect)
-export { GearWatcher } from "./axs/gear-watcher.js";
-export type { GearWatcherOptions, GearWatcherStatus, GearReading } from "./axs/gear-watcher.js";
+export { GearWatcher, watchLiveState } from "./axs/gear-watcher.js";
+export type {
+  GearWatcherOptions,
+  GearWatcherStatus,
+  GearReading,
+  WatchLiveStateOptions,
+} from "./axs/gear-watcher.js";
 export {
   DEFAULT_RECONNECT_POLICY,
   nextBackoffDelay,

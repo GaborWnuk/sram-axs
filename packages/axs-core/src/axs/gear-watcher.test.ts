@@ -13,7 +13,7 @@ import {
   SIMULATOR_DEVICE_KEY,
   simulatedDerailleur,
 } from "../testing/fake-transport.js";
-import { GearWatcher, type GearWatcherStatus } from "./gear-watcher.js";
+import { GearWatcher, watchLiveState, type GearWatcherStatus } from "./gear-watcher.js";
 
 /** Let queued promise callbacks run without advancing the fake clock. */
 const flush = () => vi.advanceTimersByTimeAsync(0);
@@ -180,5 +180,56 @@ describe("GearWatcher", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+/**
+ * `watchLiveState` exists because two hardware facts rule out the obvious
+ * approaches inside a session: a second connection closes the first, and the
+ * live-state characteristic notifies a bare `0xff` doorbell rather than the
+ * frame. It therefore has to read, over a link it does not own.
+ */
+describe("watchLiveState", () => {
+  it("polls an existing link and decodes gear, without closing it", async () => {
+    const transport = new FakeTransport();
+    const peripheral = await transport.connect("sim-rd-0001");
+    const disconnect = vi.spyOn(peripheral, "disconnect");
+
+    const seen: number[] = [];
+    const stop = watchLiveState(peripheral, {
+      deviceKey: SIMULATOR_DEVICE_KEY,
+      pollIntervalMs: 10,
+      onState: (state) => {
+        if (typeof state.gearRear === "number") seen.push(state.gearRear);
+      },
+    });
+
+    // The first read is issued immediately, before any interval elapses.
+    await vi.waitFor(() => expect(seen.length).toBeGreaterThan(0));
+    stop();
+
+    expect(seen.every((gear) => gear >= 1 && gear <= 12)).toBe(true);
+    // The link belongs to its owner; stopping must not tear it down.
+    expect(disconnect).not.toHaveBeenCalled();
+  });
+
+  it("reports decode failures instead of throwing, and keeps polling", async () => {
+    const transport = new FakeTransport();
+    const peripheral = await transport.connect("sim-rd-0001");
+
+    const errors: string[] = [];
+    const wrongKey = new Uint8Array(16).fill(0xab);
+
+    const stop = watchLiveState(peripheral, {
+      deviceKey: wrongKey,
+      pollIntervalMs: 5,
+      onState: () => {
+        throw new Error("must not decode under the wrong key");
+      },
+      onError: (error) => errors.push(error.message),
+    });
+
+    await vi.waitFor(() => expect(errors.length).toBeGreaterThan(1));
+    stop();
   });
 });

@@ -101,6 +101,20 @@ export class DeviceSession {
     });
   }
 
+  /**
+   * The connection this session is running on.
+   *
+   * Exposed because some operations need to run their own GATT traffic against
+   * the *same* link — pairing in particular. Opening a second connection to a
+   * peripheral that is already connected does not give you a second link: on
+   * Android the stack tears the first one down and hands back a fresh GATT,
+   * which silently kills this session. Reuse this instead, and do not
+   * `disconnect()` it — the session owns its lifetime.
+   */
+  get link(): ConnectedPeripheral {
+    return this.peripheral;
+  }
+
   get deviceId(): string {
     return this.peripheral.id;
   }

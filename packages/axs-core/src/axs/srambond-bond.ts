@@ -40,9 +40,10 @@
  */
 
 import { fromHex } from "../bytes.js";
-import { setTimeoutCompat } from "../timers.js";
+import { clearIntervalCompat, setIntervalCompat, setTimeoutCompat } from "../timers.js";
 import { eaxDecrypt } from "../crypto/aes-eax.js";
 import { bigIntToBytes, bytesToBigInt, modPow } from "../crypto/dh.js";
+import { DEVICE_INFORMATION_SERVICE, DIS_CHARACTERISTICS } from "../gatt/uuids.js";
 import type { ConnectedPeripheral } from "../transport.js";
 
 /** SRAMBond v1 GATT surface. */
@@ -108,6 +109,11 @@ export interface CreateBondOptions {
   onStep?: (step: string) => void;
   /** Per-operation timeout in ms (default 5000). */
   timeoutMs?: number;
+  /**
+   * How often to touch the link while waiting for pairing mode, in ms
+   * (default 10000). Set to 0 to disable.
+   */
+  keepAliveIntervalMs?: number;
 }
 
 /**
@@ -175,7 +181,31 @@ export async function createBond(
   try {
     if (options.waitForPairingMode) {
       step("waiting for pairing mode (hold the AXS button until it blinks)");
-      await options.waitForPairingMode();
+
+      // A component that has nothing to say goes quiet and then hangs up on an
+      // idle link — observed at just over three minutes, as GATT status 19
+      // (terminated by peer). A rider walking to the bike and holding a button
+      // is easily slower than that, so the wait cannot sit on a silent link.
+      // A periodic read of the Manufacturer Name is enough to keep it warm, and
+      // is read-only.
+      const keepAliveMs = options.keepAliveIntervalMs ?? 10_000;
+      const keepAlive =
+        keepAliveMs > 0
+          ? setIntervalCompat(() => {
+              void peripheral
+                .read(DEVICE_INFORMATION_SERVICE, DIS_CHARACTERISTICS.manufacturerName)
+                .catch(() => {
+                  // A failed keepalive is not itself fatal; the handshake below
+                  // will report the real problem.
+                });
+            }, keepAliveMs)
+          : null;
+
+      try {
+        await options.waitForPairingMode();
+      } finally {
+        if (keepAlive !== null) clearIntervalCompat(keepAlive);
+      }
     }
 
     step("write init");

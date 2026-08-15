@@ -36,7 +36,13 @@ import {
   nextBackoffDelay,
   type ReconnectPolicy,
 } from "../reconnect.js";
-import { clearTimeoutCompat, setTimeoutCompat, type TimerHandle } from "../timers.js";
+import {
+  clearIntervalCompat,
+  clearTimeoutCompat,
+  setIntervalCompat,
+  setTimeoutCompat,
+  type TimerHandle,
+} from "../timers.js";
 import type { BleTransport, ConnectedPeripheral } from "../transport.js";
 import { uuidEquals } from "../gatt/uuids.js";
 import type { DrivetrainStatus } from "./drivetrain.js";
@@ -273,4 +279,85 @@ export class GearWatcher {
       this.events.emit("gear", { gear: reading.gearRear, previous, reading });
     }
   }
+}
+
+export interface WatchLiveStateOptions {
+  /** The component's SRAMBond key, from `createBond` or a stored bond. */
+  deviceKey: Uint8Array;
+  /** How often to read the live-state characteristic, in ms (default 250). */
+  pollIntervalMs?: number;
+  /** Called for every successful decode, not only on change. */
+  onState: (state: DrivetrainStatus) => void;
+  /** Called when a read or decode fails. Polling continues regardless. */
+  onError?: (error: Error) => void;
+}
+
+/**
+ * Poll a component's live state over a connection that someone else owns.
+ *
+ * Use this inside an existing session; use {@link GearWatcher} when nothing
+ * else holds the link. The distinction matters: an AXS component serves one
+ * central at a time, so asking for a second connection to a peripheral that is
+ * already connected makes Android close the first — a `GearWatcher` started
+ * inside a live session would tear that session down. This touches only the
+ * link it is handed, and never closes it.
+ *
+ * ## Why polling, when the characteristic notifies
+ *
+ * `d905000b` does notify, but the notification payload is a single `0xff` byte
+ * — a doorbell announcing that state changed, not the state itself. The frame
+ * only materialises on a read. Subscribing alone therefore produces a steady
+ * stream of unusable one-byte frames and a gear that never appears, which is
+ * exactly what bench testing against an RD-GX-E-B1 showed.
+ */
+export function watchLiveState(
+  peripheral: ConnectedPeripheral,
+  options: WatchLiveStateOptions,
+): () => void {
+  const intervalMs = options.pollIntervalMs ?? 250;
+
+  let stopped = false;
+  let inFlight = false;
+  let serviceUuid: string | null = null;
+
+  const fail = (error: unknown): void => {
+    if (!stopped) options.onError?.(error instanceof Error ? error : new Error(String(error)));
+  };
+
+  const tick = async (): Promise<void> => {
+    // A slow read must not queue up behind itself.
+    if (stopped || inFlight) return;
+    inFlight = true;
+
+    try {
+      if (serviceUuid === null) {
+        const services = await peripheral.discoverServices();
+        const owner = services.find((service) =>
+          service.characteristics.some((ch) => uuidEquals(ch.uuid, LIVE_STATE_CHARACTERISTIC)),
+        );
+        if (!owner) {
+          throw new Error(
+            `No service exposes the live-state characteristic ` +
+              `(${LIVE_STATE_CHARACTERISTIC}); is this an AXS primary component?`,
+          );
+        }
+        serviceUuid = owner.uuid;
+      }
+
+      const frame = await peripheral.read(serviceUuid, LIVE_STATE_CHARACTERISTIC);
+      if (!stopped) options.onState(decodeSrambondState(options.deviceKey, frame));
+    } catch (error) {
+      fail(error);
+    } finally {
+      inFlight = false;
+    }
+  };
+
+  void tick();
+  const timer = setIntervalCompat(() => void tick(), intervalMs);
+
+  return () => {
+    stopped = true;
+    clearIntervalCompat(timer);
+  };
 }
