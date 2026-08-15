@@ -20,6 +20,7 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button, Card, EmptyState, Row, SectionTitle } from "../src/components/ui";
+import { useGearWatcher, useStoredDeviceKey } from "../src/hooks/use-gear-watcher";
 import { useGpsSpeed } from "../src/hooks/use-gps-speed";
 import { useProbe } from "../src/probe-context";
 import { useTheme } from "../src/theme";
@@ -59,12 +60,14 @@ export default function DashboardScreen() {
   const router = useRouter();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { session, deviceState } = useProbe();
+  const { session, deviceState, transport } = useProbe();
   const gps = useGpsSpeed(true);
 
-  const gear = deviceState?.gearRear ?? null;
-  const totalRear = deviceState?.totalRear?.value ?? null;
-  const gearIsSpeculative = gear !== null && gear.confidence < 0.8;
+  // Gear comes from the encrypted live-state channel, so it needs the key from
+  // pairing. `undefined` means "still loading", `null` means "not paired yet".
+  const deviceId = session?.deviceId ?? null;
+  const deviceKey = useStoredDeviceKey(deviceId);
+  const watcher = useGearWatcher(transport, deviceId, deviceKey ?? null);
 
   const speedText =
     gps.speedKph === null ? "--.-" : gps.speedKph.toFixed(1).padStart(4, " ");
@@ -89,17 +92,19 @@ export default function DashboardScreen() {
 
       <Readout
         label="REAR GEAR"
-        value={gear ? String(gear.value) : "—"}
-        unit={totalRear ? `of ${totalRear}` : ""}
-        tone={gearIsSpeculative ? "uncertain" : "normal"}
+        value={watcher.gear === null ? "—" : String(watcher.gear)}
+        unit=""
+        tone={watcher.status === "connected" ? "normal" : "uncertain"}
         caveat={
           !session
             ? "Not connected to a component."
-            : gear === null
-              ? "No gear decoded yet. The AXS BLE protocol is undocumented — see the Analysis tab to map it."
-              : gearIsSpeculative
-                ? `Speculative (${gear.decoder}, confidence ${gear.confidence.toFixed(2)}). Verify against the physical cog.`
-                : undefined
+            : deviceKey === null
+              ? "Not paired. Open the component's Live tab to pair once — gear is encrypted."
+              : watcher.status === "reconnecting"
+                ? `Link dropped — reconnecting (attempt ${watcher.attempt}).`
+                : watcher.gear === null
+                  ? "Waiting for the first frame."
+                  : undefined
         }
       />
 

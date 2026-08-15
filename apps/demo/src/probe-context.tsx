@@ -77,6 +77,9 @@ interface ProbeContextValue {
   exportSession: () => string | null;
 
   probe: AxsProbe | null;
+  /** The live transport, for library calls that work outside a probe session
+   *  (pairing and the gear watcher both open their own connection). */
+  transport: BleTransport | null;
   error: string | null;
   clearError: () => void;
 }
@@ -312,6 +315,7 @@ export function ProbeProvider({ children }: { children: React.ReactNode }) {
       markFrame,
       exportSession,
       probe,
+      transport: transportRef.current,
       error,
       clearError,
     }),

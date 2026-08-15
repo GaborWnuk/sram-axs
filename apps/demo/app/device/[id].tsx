@@ -27,14 +27,16 @@ import {
   type ValueSource,
 } from "@axs/core";
 
+import { LiveGear } from "../../src/components/live-gear";
 import { Badge, Button, Card, EmptyState, Row, SectionTitle } from "../../src/components/ui";
 import { exportCaptureJson } from "../../src/export-session";
 import { useProbe } from "../../src/probe-context";
 import { useTheme, type Theme } from "../../src/theme";
 
-type Tab = "state" | "gatt" | "log" | "analysis";
+type Tab = "live" | "state" | "gatt" | "log" | "analysis";
 
 const TABS: Array<{ key: Tab; label: string }> = [
+  { key: "live", label: "Live" },
   { key: "state", label: "State" },
   { key: "gatt", label: "GATT" },
   { key: "log", label: "Log" },
@@ -375,7 +377,7 @@ export default function DeviceScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const theme = useTheme();
-  const [tab, setTab] = useState<Tab>("state");
+  const [tab, setTab] = useState<Tab>("live");
 
   const {
     session,
@@ -411,6 +413,8 @@ export default function DeviceScreen() {
 
   const body = useMemo(() => {
     switch (tab) {
+      case "live":
+        return <LiveGear deviceId={id} />;
       case "state":
         return <StateTab />;
       case "gatt":
@@ -420,7 +424,7 @@ export default function DeviceScreen() {
       case "analysis":
         return <AnalysisTab />;
     }
-  }, [tab]);
+  }, [tab, id]);
 
   if (!session) {
     return (

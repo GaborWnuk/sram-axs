@@ -53,7 +53,8 @@
           "locationAlwaysAndWhenInUsePermission": "Used to show GPS speed on the ride dashboard alongside the current gear."
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true

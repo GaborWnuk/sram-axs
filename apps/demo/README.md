@@ -1,8 +1,18 @@
 # AXS Probe (demo app)
 
-Expo app demonstrating [`@axs/core`](../../packages/axs-core). Scans for SRAM AXS
-components, enumerates everything they expose over BLE, logs raw frames, and
-shows a ride dashboard with GPS speed and current gear.
+Expo app demonstrating [`@axs/core`](../../packages/axs-core) end to end: find a
+SRAM AXS component, pair with it, and read **live gear** — plus a ride dashboard
+with GPS speed, and the reconnaissance views used to map the protocol.
+
+The parts worth reading as reference usage:
+
+| File | Shows |
+|---|---|
+| [`src/hooks/use-pairing.ts`](src/hooks/use-pairing.ts) | `createBond()` driven from a UI, including the physical AXS-button step |
+| [`src/hooks/use-gear-watcher.ts`](src/hooks/use-gear-watcher.ts) | `GearWatcher` bound to React state, with auto-reconnect |
+| [`src/key-store.ts`](src/key-store.ts) | Persisting the bond key in the platform keychain |
+| [`src/components/live-gear.tsx`](src/components/live-gear.tsx) | The two together: pair once, then read |
+| [`src/ble/plx-transport.ts`](src/ble/plx-transport.ts) | Implementing `BleTransport` on `react-native-ble-plx` |
 
 Built on Expo SDK 57, React Native 0.86, expo-router with typed routes, and the
 New Architecture.
@@ -28,8 +38,9 @@ installed.
 ### No hardware?
 
 The iOS Simulator has no Bluetooth radio. Switch **Transport** to **Simulator**
-on the scan screen and a synthetic derailleur appears, driving the whole
-pipeline — scan, GATT tree, notification stream, byte analysis, dashboard.
+on the scan screen and a synthetic derailleur appears. It speaks the real AXS
+shapes — including the AES-EAX encrypted live-state channel — so the whole
+pipeline runs, gear included.
 
 ## Screens
 
@@ -39,10 +50,11 @@ company-ID filter, and "my derailleur isn't showing up" is exactly the situation
 you would open this to debug. SRAM devices (company ID `0x0933`) sort first and
 are badged, with their raw manufacturer payload shown in hex.
 
-**Device.** Four tabs:
+**Device.** Five tabs, of which **Live** is the one to look at first:
 
 | Tab | What it is for |
 |---|---|
+| **Live** | Pair with the component, then watch gear update. This is the reference flow. |
 | **State** | Decoded values with provenance. Low-confidence readings are dimmed and captioned. |
 | **GATT** | The full service tree. Standard SIG entries are dimmed; vendor-defined ones are highlighted — that is where the undocumented AXS protocol lives. |
 | **Log** | Raw frames: timestamp, characteristic, hex, best interpretation. "Mark shift" stamps ground truth onto the capture. |
@@ -50,9 +62,28 @@ are badged, with their raw manufacturer payload shown in hex.
 
 **Dashboard.** GPS speed next to current gear. Speed comes from the location
 provider's Doppler estimate rather than differentiated positions. Gear comes from
-the encrypted `drivetrain_status` channel, so it needs the component's key —
-supply one from `axs bond`, or run the Simulator transport, which ships its own
-key. Every value is labelled with its decoder confidence.
+`GearWatcher`, using the key stored when you paired on the Live tab; if the
+component has not been paired the readout says so instead of showing a guess.
+
+## Pairing, and why it is needed
+
+Identity, firmware, battery and MicroAdjust read in the clear. **Gear does not:**
+it travels on an encrypted channel whose key the component only hands over during
+the SRAMBond pairing handshake, and only while it is physically in pairing mode.
+
+So the Live tab has two states. Unpaired, it offers a **Pair** button and then
+asks you to hold the AXS button until the light blinks. Paired, it just shows
+gear — the key is kept in the device keychain, and reading with it never writes
+to the component.
+
+Two things worth knowing:
+
+- **Pairing re-keys the component.** Each bond makes it mint a fresh key and
+  invalidates the previous one. The official SRAM app simply re-pairs itself the
+  next time it connects, so this is recoverable, but it is why the app pairs once
+  and stores the result rather than bonding on every connection.
+- **Only pairing writes.** Everything else in this app is strictly read-only, and
+  the write path touches only the SRAMBond service — never the firmware path.
 
 ## The bench workflow
 
@@ -82,15 +113,19 @@ key. Every value is labelled with its decoder confidence.
 ## Layout
 
 ```
-app/                    expo-router routes
-  _layout.tsx           stack + providers
-  index.tsx             scan
-  device/[id].tsx       four-tab detail
-  dashboard.tsx         GPS speed + gear
+app/                        expo-router routes
+  _layout.tsx               stack + providers
+  index.tsx                 scan
+  device/[id].tsx           five-tab detail (Live first)
+  dashboard.tsx             GPS speed + gear
 src/
-  ble/plx-transport.ts  the only file that knows a BLE stack exists
-  probe-context.tsx     app state; buffers frames to avoid re-render storms
+  ble/plx-transport.ts      the only file that knows a BLE stack exists
+  key-store.ts              bond keys in the platform keychain
+  probe-context.tsx         app state; buffers frames to avoid re-render storms
+  hooks/use-pairing.ts      createBond() as a UI state machine
+  hooks/use-gear-watcher.ts GearWatcher bound to React state
   hooks/use-gps-speed.ts
+  components/live-gear.tsx  pair, then read gear — the reference flow
   components/ui.tsx
   theme.ts
   export-session.ts
