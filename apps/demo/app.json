@@ -1,0 +1,62 @@
+{
+  "expo": {
+    "name": "AXS Probe",
+    "slug": "axs-probe",
+    "scheme": "axsprobe",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "dev.local.axsprobe",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "AXS Probe reads state broadcast by nearby SRAM AXS components.",
+        "NSLocationWhenInUseUsageDescription": "Used to show GPS speed on the ride dashboard alongside the current gear."
+      }
+    },
+    "android": {
+      "package": "dev.local.axsprobe",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "modes": [
+            "central"
+          ],
+          "bluetoothAlwaysPermission": "AXS Probe reads state broadcast by nearby SRAM AXS components."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Used to show GPS speed on the ride dashboard alongside the current gear."
+        }
+      ],
+      "expo-sharing"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

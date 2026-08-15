@@ -1,0 +1,26 @@
+{
+  "name": "@axs/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Node CLI for probing SRAM AXS components over macOS/Linux/Windows BLE. Validates @axs/core against real hardware without a phone.",
+  "bin": {
+    "axs": "./src/cli.ts"
+  },
+  "scripts": {
+    "axs": "tsx src/cli.ts",
+    "scan": "tsx src/cli.ts scan",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@axs/core": "*",
+    "@stoprocent/noble": "^2.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.2"
+  },
+  "license": "MPL-2.0",
+  "author": "Gabor Wnuk <gabor.wnuk@me.com>"
+}

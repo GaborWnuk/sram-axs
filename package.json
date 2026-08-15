@@ -1,0 +1,33 @@
+{
+  "name": "sram-axs-workspace",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Monorepo: axs-core BLE reconnaissance/decoding library + Expo demo app for SRAM AXS components",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "npm run build --workspace=@axs/core",
+    "test": "npm run test --workspace=@axs/core",
+    "test:watch": "npm run test:watch --workspace=@axs/core",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "demo": "npm run start --workspace=@axs/demo",
+    "cli": "npm run axs -w @axs/cli --",
+    "scan": "npm run axs -w @axs/cli -- scan",
+    "lint:fix": "eslint . --fix",
+    "check": "npm run lint && npm run typecheck && npm test && npm run build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "globals": "^17.11.0",
+    "typescript-eslint": "^8.67.0"
+  },
+  "license": "MPL-2.0",
+  "author": "Gabor Wnuk <gabor.wnuk@me.com>"
+}

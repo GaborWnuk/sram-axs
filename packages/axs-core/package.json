@@ -1,0 +1,53 @@
+{
+  "name": "@axs/core",
+  "version": "0.1.0",
+  "description": "Transport-agnostic reconnaissance and decoding library for SRAM AXS components (BLE + ANT+ Shifting profile). React Native friendly.",
+  "keywords": [
+    "sram",
+    "axs",
+    "eagle",
+    "transmission",
+    "bicycle",
+    "derailleur",
+    "ble",
+    "bluetooth",
+    "ant+",
+    "shifting",
+    "react-native"
+  ],
+  "license": "MPL-2.0",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "react-native": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^3.2.4",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  },
+  "author": "Gabor Wnuk <gabor.wnuk@me.com>"
+}
