@@ -65,7 +65,7 @@ function ProvenanceRow({
 }
 
 function StateTab() {
-  const { deviceState, session } = useProbe();
+  const { deviceState, session, liveGear } = useProbe();
   const theme = useTheme();
 
   if (!deviceState) return <EmptyState title="Not connected" />;
@@ -94,7 +94,11 @@ function StateTab() {
 
       <Card>
         <SectionTitle>Drivetrain</SectionTitle>
-        <ProvenanceRow label="Rear gear" source={gear} />
+        {liveGear !== null ? (
+          <Row label="Rear gear" value={String(liveGear)} monospace />
+        ) : (
+          <ProvenanceRow label="Rear gear" source={gear} />
+        )}
         <ProvenanceRow label="Front gear" source={deviceState.gearFront} />
         <ProvenanceRow label="Rear cogs" source={deviceState.totalRear} />
         <Row label="Shifts observed" value={String(deviceState.shiftCount)} monospace />
@@ -387,6 +391,7 @@ export default function DeviceScreen() {
     recordedFrameCount,
     exportSession,
     deviceState,
+    liveGear,
   } = useProbe();
 
   const onExport = useCallback(async () => {
@@ -490,7 +495,7 @@ export default function DeviceScreen() {
       {deviceState && tab !== "log" ? (
         <View style={[styles.gearStrip, { backgroundColor: theme.surfaceAlt }]}>
           <Text style={[styles.gearStripText, { color: theme.textDim }]}>
-            gear {deviceState.gearRear?.value ?? "—"}
+            gear {liveGear ?? deviceState.gearRear?.value ?? "—"}
             {deviceState.totalRear ? `/${deviceState.totalRear.value}` : ""} · shifts{" "}
             {deviceState.shiftCount} · frames {deviceState.frameCount}
           </Text>

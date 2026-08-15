@@ -21,7 +21,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import * as Crypto from "expo-crypto";
-import { createBond, type BleTransport } from "@axs/core";
+import { createBond, type BleTransport, type ConnectedPeripheral } from "@axs/core";
 
 import { loadDeviceKey, saveDeviceKey } from "../key-store";
 
@@ -45,8 +45,16 @@ export interface UsePairing {
 
   /** Load a previously stored key, if this component has been paired before. */
   restore: (deviceId: string) => Promise<Uint8Array | null>;
-  /** Begin pairing. Resolves when the handshake ends, successfully or not. */
-  pair: (deviceId: string) => Promise<void>;
+  /**
+   * Begin pairing. Resolves when the handshake ends, successfully or not.
+   *
+   * Pass `link` when something already holds a connection to this component —
+   * a probe session, typically. Bonding then runs over that link instead of
+   * opening a second one, which matters because a second connection does not
+   * coexist with the first: Android closes the original and reconnects, taking
+   * the session down with it.
+   */
+  pair: (deviceId: string, link?: ConnectedPeripheral) => Promise<void>;
   /** Call when the rider confirms the light is blinking. */
   confirmPairingMode: () => void;
   /** Discard state so the screen can offer pairing again. */
@@ -88,8 +96,8 @@ export function usePairing(transport: BleTransport | null): UsePairing {
   }, []);
 
   const pair = useCallback(
-    async (deviceId: string) => {
-      if (!transport) {
+    async (deviceId: string, link?: ConnectedPeripheral) => {
+      if (!transport && !link) {
         setError("No Bluetooth transport available.");
         setStage("failed");
         return;
@@ -99,13 +107,20 @@ export function usePairing(transport: BleTransport | null): UsePairing {
       setStep(null);
       setStage("connecting");
 
-      let peripheral;
-      try {
-        peripheral = await transport.connect(deviceId);
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
-        setStage("failed");
-        return;
+      // Only close what this hook opened. A borrowed link belongs to its owner.
+      const borrowed = link !== undefined;
+
+      let peripheral: ConnectedPeripheral;
+      if (link) {
+        peripheral = link;
+      } else {
+        try {
+          peripheral = await transport!.connect(deviceId);
+        } catch (caught) {
+          setError(caught instanceof Error ? caught.message : String(caught));
+          setStage("failed");
+          return;
+        }
       }
 
       try {
@@ -138,12 +153,15 @@ export function usePairing(transport: BleTransport | null): UsePairing {
         setStage("failed");
       } finally {
         buttonConfirmed.current = null;
-        // Hand the link back: the gear watcher opens its own connection, and
-        // AXS components serve one central at a time.
-        try {
-          await peripheral.disconnect();
-        } catch {
-          // Already gone.
+        // A borrowed link stays up — its owner is still using it. Only a
+        // connection opened here is closed here, since AXS components serve one
+        // central at a time and holding it would block the next reader.
+        if (!borrowed) {
+          try {
+            await peripheral.disconnect();
+          } catch {
+            // Already gone.
+          }
         }
       }
     },

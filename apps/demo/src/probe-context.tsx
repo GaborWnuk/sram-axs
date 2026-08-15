@@ -41,6 +41,7 @@ import {
   type RawFrame,
 } from "@axs/core";
 
+import { requestBlePermissions } from "./ble/permissions";
 import { PlxTransport } from "./ble/plx-transport";
 
 /** How often buffered frames are flushed into React state. */
@@ -76,6 +77,15 @@ interface ProbeContextValue {
   markFrame: (label: string) => void;
   exportSession: () => string | null;
 
+  /**
+   * Rear gear from the live-state poll, published by whichever screen holds the
+   * bond key. The aggregated `deviceState` cannot carry it: the component
+   * notifies only a one-byte doorbell on the encrypted channel, so gear exists
+   * solely as the result of a read.
+   */
+  liveGear: number | null;
+  setLiveGear: (gear: number | null) => void;
+
   probe: AxsProbe | null;
   /** The live transport, for library calls that work outside a probe session
    *  (pairing and the gear watcher both open their own connection). */
@@ -104,6 +114,7 @@ export function ProbeProvider({ children }: { children: React.ReactNode }) {
   const [isRecording, setIsRecording] = useState(false);
   const [recordedFrameCount, setRecordedFrameCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [liveGear, setLiveGear] = useState<number | null>(null);
 
   const transportRef = useRef<BleTransport | null>(null);
   const probeRef = useRef<AxsProbe | null>(null);
@@ -171,19 +182,22 @@ export function ProbeProvider({ children }: { children: React.ReactNode }) {
     setLogs([]);
     setSession(null);
     setDeviceState(null);
+    setLiveGear(null);
     setTransportModeState(mode);
   }, []);
 
   const startScan = useCallback(async () => {
     setError(null);
     try {
+      // The simulator needs no radio, so do not prompt for one.
+      if (transportMode === "bluetooth") await requestBlePermissions();
       stopScanRef.current = await probe.startScan();
       setIsScanning(true);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
       setIsScanning(false);
     }
-  }, [probe]);
+  }, [probe, transportMode]);
 
   const stopScan = useCallback(() => {
     stopScanRef.current?.();
@@ -201,6 +215,7 @@ export function ProbeProvider({ children }: { children: React.ReactNode }) {
     await session?.close();
     setSession(null);
     setDeviceState(null);
+    setLiveGear(null);
     recorderRef.current?.stop();
     recorderRef.current = null;
     aggregatorRef.current = null;
@@ -242,6 +257,7 @@ export function ProbeProvider({ children }: { children: React.ReactNode }) {
 
         next.events.on("disconnected", ({ error: disconnectError }) => {
           setSession(null);
+          setLiveGear(null);
           if (disconnectError) setError(`Disconnected: ${disconnectError.message}`);
         });
 
@@ -314,6 +330,8 @@ export function ProbeProvider({ children }: { children: React.ReactNode }) {
       toggleRecording,
       markFrame,
       exportSession,
+      liveGear,
+      setLiveGear,
       probe,
       transport: transportRef.current,
       error,
@@ -339,6 +357,7 @@ export function ProbeProvider({ children }: { children: React.ReactNode }) {
       toggleRecording,
       markFrame,
       exportSession,
+      liveGear,
       probe,
       error,
       clearError,

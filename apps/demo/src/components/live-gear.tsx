@@ -9,45 +9,40 @@
 /**
  * The primary screen: pair with a component, then read its gear.
  *
- * This is the reference example of using the library end to end —
- * `usePairing` wraps `createBond`, `useGearWatcher` wraps `GearWatcher`, and the
- * key is persisted between sessions so pairing happens exactly once.
+ * This is the reference example of using the library end to end — `usePairing`
+ * wraps `createBond`, and the key is persisted between sessions so pairing
+ * happens exactly once.
+ *
+ * Note how gear arrives here: `watchLiveState` polls the session's own link.
+ * Two things force that shape, both learned on hardware.
+ *
+ * An AXS component serves one central at a time, so asking Android for a second
+ * connection to an already-connected peripheral closes the first — a
+ * `GearWatcher` here would tear down the very session it sits on. And the
+ * live-state characteristic notifies only a one-byte `0xff` doorbell, never the
+ * frame itself, so subscribing produces a stream of undecodable frames and a
+ * gear that never appears. Reading is what actually yields state.
+ *
+ * `GearWatcher` remains the right tool where nothing else holds the link — see
+ * the dashboard, which uses it directly.
  */
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
-import { toHex, type GearWatcherStatus } from "@axs/core";
+import { toHex, watchLiveState } from "@axs/core";
 
 import { forgetDeviceKey } from "../key-store";
-import { useGearWatcher } from "../hooks/use-gear-watcher";
 import { usePairing } from "../hooks/use-pairing";
 import { useProbe } from "../probe-context";
 import { useTheme } from "../theme";
 import { Badge, Button, Card, Row, SectionTitle } from "./ui";
 
-function statusTone(status: GearWatcherStatus): "success" | "warning" | "neutral" {
-  if (status === "connected") return "success";
-  if (status === "stopped") return "neutral";
-  return "warning";
-}
-
-function statusLabel(status: GearWatcherStatus, attempt: number): string {
-  switch (status) {
-    case "connected":
-      return "connected";
-    case "connecting":
-      return "connecting…";
-    case "reconnecting":
-      return attempt > 0 ? `reconnecting (attempt ${attempt})` : "reconnecting…";
-    case "stopped":
-      return "stopped";
-  }
-}
-
 export function LiveGear({ deviceId }: { deviceId: string }) {
   const theme = useTheme();
-  const { transport } = useProbe();
+  const { transport, session, liveGear: gear, setLiveGear } = useProbe();
   const pairing = usePairing(transport);
+
+  const [readError, setReadError] = useState<string | null>(null);
 
   // A component paired on a previous run needs no button press: the stored key
   // is enough, and reading with it never writes to the device.
@@ -55,7 +50,27 @@ export function LiveGear({ deviceId }: { deviceId: string }) {
     void pairing.restore(deviceId);
   }, [deviceId, pairing.restore]);
 
-  const watcher = useGearWatcher(transport, deviceId, pairing.deviceKey);
+  // Poll live state over the session's link once a key is known.
+  useEffect(() => {
+    const link = session?.link;
+    if (!pairing.deviceKey || !link) return;
+
+    setReadError(null);
+    const stop = watchLiveState(link, {
+      deviceKey: pairing.deviceKey,
+      onState: (state) => {
+        setReadError(null);
+        if (typeof state.gearRear === "number") setLiveGear(state.gearRear);
+      },
+      // A failed decode usually means a stale key — the component re-keys on
+      // every bond, so a key from a previous pairing no longer authenticates.
+      onError: (error) => setReadError(error.message),
+    });
+
+    return stop;
+  }, [pairing.deviceKey, session, setLiveGear]);
+
+  const connected = session !== null && !session.isClosed;
 
   const unpair = async () => {
     await forgetDeviceKey(deviceId);
@@ -99,7 +114,9 @@ export function LiveGear({ deviceId }: { deviceId: string }) {
             <Button
               title={pairing.stage === "failed" ? "Try pairing again" : "Pair with this component"}
               tone="accent"
-              onPress={() => void pairing.pair(deviceId)}
+              // Bond over the session's own link rather than a second
+              // connection, which would tear this session down.
+              onPress={() => void pairing.pair(deviceId, session?.link)}
             />
           )}
 
@@ -124,23 +141,23 @@ export function LiveGear({ deviceId }: { deviceId: string }) {
 
       <Card>
         <View style={styles.gearBlock}>
-          <Text style={[styles.gearValue, { color: watcher.gear === null ? theme.textFaint : theme.text }]}>
-            {watcher.gear ?? "—"}
+          <Text style={[styles.gearValue, { color: gear === null ? theme.textFaint : theme.text }]}>
+            {gear ?? "—"}
           </Text>
           <Text style={[styles.gearCaption, { color: theme.textDim }]}>
-            {watcher.gear === null ? "waiting for a frame" : "rear gear"}
+            {gear === null ? "waiting for a frame" : "rear gear"}
           </Text>
         </View>
 
         <View style={styles.statusRow}>
           <Badge
-            tone={statusTone(watcher.status)}
-            label={statusLabel(watcher.status, watcher.attempt)}
+            tone={connected ? "success" : "neutral"}
+            label={connected ? "connected" : "not connected"}
           />
         </View>
 
-        {watcher.warning && (
-          <Text style={[styles.warning, { color: theme.textDim }]}>{watcher.warning}</Text>
+        {readError && (
+          <Text style={[styles.warning, { color: theme.textDim }]}>{readError}</Text>
         )}
       </Card>
 

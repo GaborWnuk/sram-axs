@@ -12,11 +12,14 @@
  * Scans unfiltered rather than filtering on SRAM's company ID — a component
  * that is asleep or advertising unexpectedly would be invisible under a filter,
  * and "my derailleur isn't showing up" is exactly what you'd open this to debug.
- * SRAM devices are sorted to the top and badged instead.
+ *
+ * The *list* defaults to SRAM only, because that is what you are here for. The
+ * filter is a view over a complete scan, not a narrower scan, so "Show all"
+ * reveals everything already seen without needing to scan again.
  */
 
 import { useRouter } from "expo-router";
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { toHex, type DiscoveredDevice } from "@axs/core";
@@ -115,12 +118,19 @@ export default function ScanScreen() {
     [connect, router],
   );
 
+  // Filtering happens here, on the rendered list, and never on the scan itself.
+  // A radio-level filter would hide a component advertising without the
+  // expected company ID — exactly the case worth seeing.
+  const [sramOnly, setSramOnly] = useState(true);
+
   const sramCount = devices.filter((d) => d.identification.isSram).length;
+  const visible = sramOnly ? devices.filter((d) => d.identification.isSram) : devices;
+  const hidden = devices.length - visible.length;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <FlatList
-        data={devices}
+        data={visible}
         keyExtractor={(item) => item.result.id}
         contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 24 }]}
         ListHeaderComponent={
@@ -189,10 +199,20 @@ export default function ScanScreen() {
               />
             ) : null}
 
-            <SectionTitle>
-              {devices.length} device{devices.length === 1 ? "" : "s"}
-              {sramCount > 0 ? ` · ${sramCount} SRAM` : ""}
-            </SectionTitle>
+            <View style={styles.listHeaderRow}>
+              <SectionTitle>
+                {sramOnly
+                  ? `${sramCount} SRAM device${sramCount === 1 ? "" : "s"}`
+                  : `${devices.length} device${devices.length === 1 ? "" : "s"}${
+                      sramCount > 0 ? ` · ${sramCount} SRAM` : ""
+                    }`}
+              </SectionTitle>
+              <Button
+                title={sramOnly ? `Show all${hidden > 0 ? ` (${hidden})` : ""}` : "SRAM only"}
+                tone="neutral"
+                onPress={() => setSramOnly((previous) => !previous)}
+              />
+            </View>
           </View>
         }
         renderItem={({ item }) => (
@@ -204,11 +224,19 @@ export default function ScanScreen() {
         )}
         ListEmptyComponent={
           <EmptyState
-            title={isScanning ? "Scanning…" : "No devices yet"}
+            title={
+              isScanning
+                ? "Scanning…"
+                : sramOnly && devices.length > 0
+                  ? "No SRAM devices"
+                  : "No devices yet"
+            }
             detail={
               isScanning
                 ? "AXS components sleep aggressively. Press the AXS button on the derailleur or bounce the bike to wake it."
-                : "Tap Start scan. Everything nearby is listed — SRAM devices are sorted first and badged."
+                : sramOnly && devices.length > 0
+                  ? `Nothing nearby is advertising as SRAM. Tap Show all to see the other ${devices.length} device${devices.length === 1 ? "" : "s"}.`
+                  : "Tap Start scan. SRAM components are listed here; Show all reveals everything else nearby."
             }
           />
         }
@@ -221,6 +249,12 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   list: { padding: 14 },
   buttonRow: { flexDirection: "row", gap: 10, marginBottom: 12 },
+  listHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
   flexButton: { flex: 1 },
   dashboardButton: { marginBottom: 12 },
   hint: { fontSize: 11, lineHeight: 16, marginTop: 8 },
