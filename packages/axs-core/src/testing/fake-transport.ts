@@ -22,7 +22,16 @@
 
 import { AXS_USAGE_RECORD_OFFSETS } from "../axs/device-info.js";
 import { LIVE_STATE_CHARACTERISTIC } from "../axs/srambond.js";
+import {
+  SRAMBOND_FINALIZE,
+  SRAMBOND_GENERATOR,
+  SRAMBOND_INIT,
+  SRAMBOND_MODULUS,
+  SRAMBOND_V1_CHARACTERISTIC,
+  SRAMBOND_V1_SERVICE,
+} from "../axs/srambond-bond.js";
 import { eaxEncrypt } from "../crypto/aes-eax.js";
+import { bigIntToBytes, bytesToBigInt, modPow } from "../crypto/dh.js";
 import { SRAM_COMPANY_ID } from "../identify.js";
 import {
   clearIntervalCompat,
@@ -63,6 +72,13 @@ export interface FakeCharacteristicSpec {
   readFails?: boolean;
   /** Make reads never settle, mimicking a wedged GATT read. */
   readHangs?: boolean;
+  /**
+   * Called on every write, with a `notify` callback that pushes a value to
+   * whoever is currently subscribed. This is how request/response
+   * characteristics behave — the answer to a write arrives as a notification,
+   * not as a readable value.
+   */
+  onWrite?: (value: Uint8Array, notify: (payload: Uint8Array) => void) => void;
 }
 
 export interface FakeServiceSpec {
@@ -102,6 +118,18 @@ export function sramManufacturerData(payload: number[] = []): Uint8Array {
 export const SIMULATOR_DEVICE_KEY = Uint8Array.from([
   0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
 ]);
+
+/** Length of every SRAMBond key: DH keys, the shared secret, the device key. */
+const KEY_LENGTH = 16;
+
+/**
+ * The simulated component's Diffie-Hellman private key.
+ *
+ * Fixed rather than random so a captured simulator session replays identically.
+ * A real component generates a fresh one per bond; nothing here is a secret,
+ * since the simulator's device key is published above anyway.
+ */
+const bondPrivateKey = 0x0f1e2d3c4b5a69788796a5b4c3d2e1f0n;
 
 /** Encode a protobuf `uint32` field (wire type 0). */
 function protobufUint32(fieldNumber: number, value: number): number[] {
@@ -172,6 +200,60 @@ export function simulatedDerailleur(id = "sim-rd-0001"): FakeDeviceSpec {
       ]),
       nonceSeed,
     );
+
+  // --- SRAMBond pairing, device side ----------------------------------------
+  // Mirrors what a component does during create-bond: take the client's
+  // Diffie-Hellman public key, answer with its own, then hand back its
+  // live-state key wrapped under the shared secret. Modelling this means the
+  // demo app can exercise the whole pairing flow — including the notify-only
+  // response path that tripped up the first hardware attempt — with no bike.
+  let bondStage: "idle" | "initialised" | "bonded" = "idle";
+
+  const equals = (a: Uint8Array, b: Uint8Array): boolean =>
+    a.length === b.length && a.every((byte, i) => byte === b[i]);
+
+  const handleBondWrite = (
+    value: Uint8Array,
+    notify: (payload: Uint8Array) => void,
+  ): void => {
+    if (equals(value, SRAMBOND_INIT)) {
+      bondStage = "initialised";
+      return;
+    }
+
+    if (equals(value, SRAMBOND_FINALIZE)) {
+      if (bondStage === "initialised") bondStage = "bonded";
+      return;
+    }
+
+    // A component ignores a public key it was not primed for with INIT.
+    if (bondStage !== "initialised" || value.length !== KEY_LENGTH) return;
+
+    const devicePublic = bigIntToBytes(
+      modPow(SRAMBOND_GENERATOR, bondPrivateKey, SRAMBOND_MODULUS),
+      KEY_LENGTH,
+      "be",
+    );
+    const shared = bigIntToBytes(
+      modPow(bytesToBigInt(value, "be"), bondPrivateKey, SRAMBOND_MODULUS),
+      KEY_LENGTH,
+      "be",
+    );
+
+    // Key transport: nonce(16) ‖ ciphertext(16) ‖ tag(16), sealed under the
+    // shared secret. The key handed over is the same one the live-state channel
+    // uses, so pairing in the simulator yields a key that really decrypts gear.
+    const nonce = new Uint8Array(KEY_LENGTH);
+    for (let i = 0; i < nonce.length; i++) nonce[i] = (i * 37 + 11) & 0xff;
+    const sealed = eaxEncrypt(shared, nonce, SIMULATOR_DEVICE_KEY, { tagLength: 16 });
+
+    const blob = new Uint8Array(nonce.length + sealed.length);
+    blob.set(nonce);
+    blob.set(sealed, nonce.length);
+
+    notify(devicePublic);
+    notify(blob);
+  };
 
   /** The plaintext `d9050003` usage record: 54 bytes, mostly static. */
   const usageRecord = (): Uint8Array => {
@@ -262,6 +344,19 @@ export function simulatedDerailleur(id = "sim-rd-0001"): FakeDeviceSpec {
           },
         ],
       },
+      {
+        // SRAMBond v1 — the pairing service. Write-and-notify with no read
+        // property, matching real hardware, where reading this characteristic
+        // is rejected outright.
+        uuid: SRAMBOND_V1_SERVICE,
+        characteristics: [
+          {
+            uuid: SRAMBOND_V1_CHARACTERISTIC,
+            properties: { write: true, notify: true },
+            onWrite: handleBondWrite,
+          },
+        ],
+      },
     ],
   };
 }
@@ -269,6 +364,7 @@ export function simulatedDerailleur(id = "sim-rd-0001"): FakeDeviceSpec {
 class FakePeripheral implements ConnectedPeripheral {
   private disconnectHandlers = new Set<(error: Error | null) => void>();
   private timers = new Set<TimerHandle>();
+  private subscribers = new Map<FakeCharacteristicSpec, Set<(value: Uint8Array) => void>>();
   private connected = true;
 
   constructor(private readonly spec: FakeDeviceSpec) {}
@@ -332,6 +428,13 @@ class FakePeripheral implements ConnectedPeripheral {
   ): Promise<void> {
     const characteristic = this.find(serviceUuid, characteristicUuid);
     characteristic.value = value;
+
+    if (characteristic.onWrite) {
+      const listeners = this.subscribers.get(characteristic);
+      characteristic.onWrite(value, (payload) => {
+        for (const listener of listeners ?? []) listener(payload);
+      });
+    }
   }
 
   async subscribe(
@@ -341,21 +444,31 @@ class FakePeripheral implements ConnectedPeripheral {
   ): Promise<Unsubscribe> {
     const characteristic = this.find(serviceUuid, characteristicUuid);
 
-    if (!characteristic.notifyGenerator || !characteristic.notifyIntervalMs) {
-      // Subscribable but silent — a real and common situation.
-      return () => {};
+    // Register first, so a write-driven response reaches this subscriber even
+    // if the characteristic emits nothing on its own.
+    let listeners = this.subscribers.get(characteristic);
+    if (!listeners) {
+      listeners = new Set();
+      this.subscribers.set(characteristic, listeners);
+    }
+    const registered = listeners;
+    registered.add(onValue);
+
+    let timer: TimerHandle = null;
+    if (characteristic.notifyGenerator && characteristic.notifyIntervalMs) {
+      let tick = 0;
+      timer = setIntervalCompat(() => {
+        onValue(characteristic.notifyGenerator!(tick++));
+      }, characteristic.notifyIntervalMs);
+      this.timers.add(timer);
     }
 
-    let tick = 0;
-    const timer = setIntervalCompat(() => {
-      onValue(characteristic.notifyGenerator!(tick++));
-    }, characteristic.notifyIntervalMs);
-
-    this.timers.add(timer);
-
     return () => {
-      clearIntervalCompat(timer);
-      this.timers.delete(timer);
+      registered.delete(onValue);
+      if (timer) {
+        clearIntervalCompat(timer);
+        this.timers.delete(timer);
+      }
     };
   }
 

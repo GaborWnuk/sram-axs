@@ -9,10 +9,14 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { fromHex, toHex } from "../bytes.js";
+import { FakeTransport, SIMULATOR_DEVICE_KEY } from "../testing/fake-transport.js";
 import type { ConnectedPeripheral } from "../transport.js";
+import { LIVE_STATE_CHARACTERISTIC, decodeSrambondState } from "./srambond.js";
 import {
   SRAMBOND_FINALIZE,
   SRAMBOND_INIT,
+  SRAMBOND_V1_CHARACTERISTIC,
+  SRAMBOND_V1_SERVICE,
   computePublicKey,
   computeSharedSecret,
   createBond,
@@ -133,5 +137,63 @@ describe("createBond orchestration", () => {
         timeoutMs: 10,
       }),
     ).rejects.toThrow(/no response .* not readable/s);
+  });
+});
+
+/**
+ * The simulator implements the component half of the handshake. Running the
+ * real client against it end to end proves the two halves agree, and that the
+ * key pairing yields is the one the live-state channel is actually encrypted
+ * with — which is what makes the demo app's Simulator mode meaningful.
+ */
+describe("createBond against the simulated component", () => {
+  it("completes the handshake and returns the live-state key", async () => {
+    const transport = new FakeTransport();
+    const peripheral = await transport.connect("sim-rd-0001");
+
+    const deviceKey = await createBond(peripheral, {
+      randomBytes: () => fromHex(VECTORS[0]!.privateKey),
+      timeoutMs: 1000,
+    });
+
+    expect(toHex(deviceKey, "")).toBe(toHex(SIMULATOR_DEVICE_KEY, ""));
+  });
+
+  it("decrypts real gear with the key it negotiated", async () => {
+    const transport = new FakeTransport();
+    const peripheral = await transport.connect("sim-rd-0001");
+
+    const deviceKey = await createBond(peripheral, {
+      randomBytes: () => fromHex(VECTORS[1]!.privateKey),
+      timeoutMs: 1000,
+    });
+
+    const frame = await peripheral.read(
+      "d9050001-90aa-4c7c-b036-1e01fb8eb7ee",
+      LIVE_STATE_CHARACTERISTIC,
+    );
+    const state = decodeSrambondState(deviceKey, frame);
+
+    expect(state.gearRear).toBeGreaterThanOrEqual(1);
+    expect(state.gearRear).toBeLessThanOrEqual(12);
+  });
+
+  it("ignores a public key that was not preceded by init", async () => {
+    const transport = new FakeTransport();
+    const peripheral = await transport.connect("sim-rd-0001");
+
+    const received: Uint8Array[] = [];
+    await peripheral.subscribe(SRAMBOND_V1_SERVICE, SRAMBOND_V1_CHARACTERISTIC, (v) =>
+      received.push(v),
+    );
+
+    await peripheral.write(
+      SRAMBOND_V1_SERVICE,
+      SRAMBOND_V1_CHARACTERISTIC,
+      fromHex(VECTORS[0]!.publicKey),
+      true,
+    );
+
+    expect(received).toHaveLength(0);
   });
 });
