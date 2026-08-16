@@ -29,15 +29,19 @@ import {
   StateAggregator,
   FakeTransport,
   createBond,
+  createSrambondDecoder,
   GearWatcher,
   describeUuid,
   fromHex,
   loadSession,
   LIVE_STATE_CHARACTERISTIC,
+  SIMULATOR_DEVICE_KEY,
   simulatedDerailleur,
   toHex,
   uuidEquals,
+  type AxsDeviceState,
   type BleTransport,
+  type Decoder,
   type DiscoveredDevice,
 } from "@gaborwnuk/axs-core";
 
@@ -170,7 +174,8 @@ async function commandProbe(
   transport: BleTransport,
   deviceId: string,
   flags: Record<string, string | boolean>,
-) {
+  options: { extraDecoders?: Decoder[] } = {},
+): Promise<StateAggregator> {
   const seconds = numberFlag(flags, "seconds", 30);
   const outPath = typeof flags.out === "string" ? flags.out : null;
   // 0 disables polling. AXS notifications carry no payload, so polling the
@@ -178,6 +183,11 @@ async function commandProbe(
   const pollMs = numberFlag(flags, "poll", 0) * 1000;
 
   const probe = new AxsProbe(transport);
+  // Callers with a device key hand in a keyed decoder here. Without one the
+  // encrypted live-state channel stays opaque, which is correct for a plain
+  // `probe` of an unpaired component and wrong for `simulate`, where the key
+  // is known.
+  for (const decoder of options.extraDecoders ?? []) probe.registry.add(decoder);
   probe.events.on("log", (entry) => {
     const tint =
       entry.level === "warn" ? c.yellow : entry.level === "error" ? c.red : c.dim;
@@ -279,6 +289,8 @@ async function commandProbe(
     );
   }
   console.log();
+
+  return aggregator;
 }
 
 function printSummary(
@@ -597,6 +609,7 @@ const normalizeKey = (uuid: string) => uuid.toLowerCase();
 
 async function commandSimulate(flags: Record<string, string | boolean>) {
   const seconds = numberFlag(flags, "seconds", 8);
+  const shouldAssert = flags.assert === true;
 
   console.log(
     c.bold("\nRunning the full pipeline against the built-in simulated derailleur.\n") +
@@ -604,8 +617,81 @@ async function commandSimulate(flags: Record<string, string | boolean>) {
   );
 
   const transport = new FakeTransport([simulatedDerailleur()], { advertiseIntervalMs: 1000 });
-  // Forward the caller's flags (notably --out) rather than rebuilding them.
-  await commandProbe(transport, "sim-rd-0001", { ...flags, seconds: String(seconds) });
+
+  // The simulator's key is known, so unlike a probe of real unpaired hardware
+  // this run can decrypt. Without it the encrypted live-state channel — the
+  // decrypt → protobuf → gear path, which is the part most worth exercising —
+  // would never be touched, and the run would prove only the plaintext half.
+  const aggregator = await commandProbe(
+    transport,
+    "sim-rd-0001",
+    { ...flags, seconds: String(seconds), poll: String(numberFlag(flags, "poll", 1)) },
+    { extraDecoders: [createSrambondDecoder(SIMULATOR_DEVICE_KEY)] },
+  );
+
+  if (!shouldAssert) {
+    console.log(c.dim("Re-run with --assert to check the pipeline produced real values.\n"));
+    return;
+  }
+
+  assertSimulatedPipeline(aggregator.current());
+}
+
+/**
+ * Turn the simulator run into a gate.
+ *
+ * Printing a table proves nothing: every field renders as "—" when decoding
+ * silently stops working, and the process still exits 0. These checks are the
+ * difference between a demo and something CI can rely on, and they are chosen
+ * to span the whole pipeline — transport, enumeration, plaintext decoders, the
+ * SRAMBond crypto, and the aggregator that folds it together.
+ */
+function assertSimulatedPipeline(state: AxsDeviceState): void {
+  const failures: string[] = [];
+
+  const check = (label: string, ok: boolean, detail: string): void => {
+    if (ok) {
+      console.log(`  ${c.green("✓")} ${label.padEnd(28)} ${c.dim(detail)}`);
+    } else {
+      console.log(`  ${c.red("✗")} ${label.padEnd(28)} ${c.red(detail)}`);
+      failures.push(label);
+    }
+  };
+
+  console.log(c.bold("── Pipeline assertions ──────────────────────────────────\n"));
+
+  check("frames captured", state.frameCount > 0, `${state.frameCount} frames`);
+  check(
+    "identity decoded",
+    state.serialNumber !== null,
+    state.serialNumber ? `serial ${state.serialNumber.value}` : "no serial decoded",
+  );
+  check(
+    "firmware decoded",
+    state.firmwareRevision !== null,
+    state.firmwareRevision ? state.firmwareRevision.value : "no firmware decoded",
+  );
+
+  // The load-bearing one. A gear only appears if the transport, the SRAMBond
+  // AES-EAX layer and the protobuf decoder all worked.
+  const gear = state.gearRear?.value ?? null;
+  check(
+    "encrypted gear decoded",
+    gear !== null && gear >= 1 && gear <= 12,
+    gear === null ? "no gear — the SRAMBond path is broken" : `gear ${gear}`,
+  );
+  check(
+    "gear came from SRAMBond",
+    state.gearRear?.decoder === "axs/srambond",
+    state.gearRear ? `decoder ${state.gearRear.decoder}` : "no decoder",
+  );
+
+  console.log();
+
+  if (failures.length > 0) {
+    fail(`${failures.length} pipeline assertion(s) failed: ${failures.join(", ")}`);
+  }
+  console.log(c.green("Pipeline OK — every stage produced a real value.\n"));
 }
 
 // --- entry point -----------------------------------------------------------
@@ -635,8 +721,11 @@ ${c.bold("axs")} — probe SRAM AXS components over BLE
   ${c.cyan("analyze <capture.json>")}
       Re-analyse a saved capture. No hardware needed.
 
-  ${c.cyan("simulate")} [--seconds N]
-      Exercise the pipeline against the built-in fake device.
+  ${c.cyan("simulate")} [--seconds N] [--assert]
+      Exercise the pipeline against the built-in fake device, decrypting its
+      live state with the simulator's known key. --assert checks each stage
+      produced a real value and exits non-zero otherwise, which is what makes
+      this usable as a CI gate rather than a demo.
 
 ${c.dim("macOS: your terminal needs Bluetooth access in")}
 ${c.dim("System Settings > Privacy & Security > Bluetooth.")}

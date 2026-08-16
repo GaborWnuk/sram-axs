@@ -68,15 +68,27 @@ jobs:
 
       # The package is published from this build, so a tarball that does not
       # resolve is worth catching now rather than at release time.
+      #
+      # `AxsProbe` is the canary rather than a component-specific export: the
+      # question here is "did the bundle load", and tying that to a name like
+      # GearWatcher makes a rename look like a packaging failure.
       - name: Verify the published entry points resolve
         run: |
           node -e "const m = require('./packages/axs-core/dist/index.cjs');
-                   if (typeof m.GearWatcher !== 'function') throw new Error('CJS entry point is broken');
+                   if (typeof m.AxsProbe !== 'function') throw new Error('CJS entry point is broken');
                    console.log('CJS OK');"
           node --input-type=module -e "import('./packages/axs-core/dist/index.js').then(m => {
-                     if (typeof m.GearWatcher !== 'function') throw new Error('ESM entry point is broken');
+                     if (typeof m.AxsProbe !== 'function') throw new Error('ESM entry point is broken');
                      console.log('ESM OK');
                    });"
+
+      # End-to-end gate. Drives the real pipeline — transport, enumeration,
+      # plaintext decoders, SRAMBond decryption, state aggregation — against the
+      # simulator, and fails the build if any stage stops producing a value.
+      # Unit tests cover each stage in isolation; this is the only check that
+      # covers them wired together, and it needs no hardware.
+      - name: Verify the pipeline end to end against the simulator
+        run: npm run cli -- simulate --seconds 5 --assert
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
