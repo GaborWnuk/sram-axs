@@ -4,6 +4,10 @@
 says how to get there without breaking what already works on a bike, and — the
 part that matters — **what proves each step**.
 
+> **Status, 2026-08-16.** Phase 0 and moves A, B and C are done, shipped as
+> 0.2.0. Each section below records what actually happened. Moves D through G
+> are still ahead.
+
 The constraint driving everything below: the derailleur path is verified working
 against real hardware. Any refactor that quietly breaks it, and is only
 discovered next time someone is in a garage with a phone, has cost more than it
@@ -31,7 +35,7 @@ Three specific gaps are worth closing before touching architecture.
 
 ---
 
-## Gap 1 — the CLI's end-to-end path does not exercise the encrypted half
+## Gap 1 — the CLI's end-to-end path does not exercise the encrypted half  ✅ closed
 
 `simulate` describes itself as proving the library end to end. It does not. Run
 it:
@@ -62,7 +66,7 @@ turns a demo into a genuine end-to-end gate across transport → session →
 registry → decrypt → aggregate → render, on every push, with no hardware. It is
 the single highest-value item in this document relative to its cost.
 
-## Gap 2 — nothing guards the public API surface
+## Gap 2 — nothing guards the public API surface  ✅ closed
 
 The only canary is the CI smoke test asserting `GearWatcher` is a function: one
 of roughly a hundred exports, and a name Move B touches.
@@ -74,7 +78,7 @@ dropping an export is a breaking change nobody notices until an install fails.
 addition, removal or rename becomes an explicit diff a human approves. Also
 swap the CI smoke symbol from `GearWatcher` to something neutral — `AxsProbe`.
 
-## Gap 3 — nothing proves behaviour is *preserved* across a refactor
+## Gap 3 — nothing proves behaviour is *preserved* across a refactor  ✅ closed
 
 The existing tests assert specific values, module by module. They are good
 tests, but a refactor that relocates logic between modules can keep every one
@@ -91,7 +95,7 @@ live as inline hex inside individual test files. One
 `fixtures/rd-gx-e-b1-sweep.json` gives characterization tests something to
 replay and doubles as a regression corpus for every future decoder.
 
-## Gap 4 — the demo can only be validated by hand, but it needs no bike
+## Gap 4 — the demo can only be validated by hand, but it needs no bike  ⚠️ accepted
 
 The demo has no tests, and cheap ones are not available: an Expo React Native
 test harness is real setup cost for hooks that are thin event mirrors. That is
@@ -117,22 +121,39 @@ fires at 4 Hz) is not worth a test harness.
 
 ---
 
-## Phase 0 — build the net before moving anything
+## Phase 0 — build the net before moving anything  ✅ done
 
-Four additive changes. None touches architecture. All can land at a desk.
+Four additive changes. None touched architecture. All landed at a desk.
 
-1. Export-surface snapshot test.
-2. Session fixture plus a characterization test over replayed state.
-3. `simulate` registers the simulator decoder, gains `--assert`, and runs in CI.
-4. CI smoke symbol changed to `AxsProbe`.
+1. **Export-surface guard**, in two halves. Value exports are compared against
+   an explicit sorted list at test time; type-only exports are pinned by a
+   mapped type that `tsc` checks, because a deleted type leaves nothing for a
+   runtime test to inspect.
+2. **Reference capture and characterization test.** The corpus moved into
+   `testing/rd-gx-e-b1-capture.ts` with its provenance documented, and gained a
+   replayable `SessionDocument`. The test folds it through `loadSession` → the
+   registry → the aggregator and pins both the values and their provenance.
+3. **`simulate --assert`**, wired into CI and `npm run check`.
+4. **CI smoke symbol** changed to `AxsProbe`.
 
-After these, every move below has an automated answer to "did I break it".
+Each was verified by reintroducing the failure it exists to catch, not by
+watching it pass: dropping `hexDump` fails (1), dropping `GearReading` fails its
+type half, and pointing `rd_position` at the wrong field number fails (3) and
+the pipeline gate together, with the stage named.
+
+**One thing worth recording about the capture.** The device key committed
+alongside those frames is a live credential for a real derailleur. It is
+per-device, grants no write access, and re-bonding invalidates it — but it is
+public, and the frames are worthless without it, since they are the only proof
+the pure-TypeScript AES-EAX implementation reproduces the hardware. It now lives
+in exactly one module rather than being transcribed twice. Re-bonding the
+component would retire the published key at no cost to the tests.
 
 ---
 
 ## The moves, and what proves each one
 
-### Move C — message profile registry *(do this first)*
+### Move C — message profile registry  ✅ done
 
 Non-breaking, and the blast radius stops at the library.
 
@@ -144,11 +165,17 @@ Non-breaking, and the blast radius stops at the library.
 | **Proof** | The 12 captured sweep frames must still decode to their physical gears. That is real hardware data, so it is the strongest evidence available without a bike |
 | **Hardware** | None |
 
-Zero app impact makes this the ideal first move: it proves the profile-registry
-pattern in miniature and exercises the new safety net on a change that cannot
+Zero app impact made this the ideal first move: it proved the profile-registry
+pattern in miniature and exercised the new safety net on a change that could not
 reach a user interface.
 
-### Move B — `LiveStateWatcher<T>`
+**Outcome.** All twelve captured frames still decode to their physical gears and
+the characterization snapshot was byte-identical. A test routes a message on
+field numbers no drivetrain uses, which is the extensibility claim made
+checkable. Profiles decode to different types, so `defineMessage` seals the type
+parameter rather than the registry erasing it with a cast.
+
+### Move B — `LiveStateWatcher<T>`  ✅ done
 
 Non-breaking, provided `GearWatcher` stays as a wrapper.
 
@@ -159,13 +186,20 @@ Non-breaking, provided `GearWatcher` stays as a wrapper.
 | **Proof** | The 9 existing watcher tests must pass **unchanged** — that is precisely the non-breakage proof. Plus a new test instantiating `LiveStateWatcher` with a non-drivetrain decode function, and the export snapshot |
 | **Hardware** | None for type parameterisation |
 
-One caveat to state plainly: the reconnect and backoff paths are tested against
+One caveat, still true: the reconnect and backoff paths are tested against
 `FakeTransport` only. Real drop behaviour — the component hanging up an idle
 link with GATT status 19 at around three minutes — is not reproducible in CI.
-Re-parameterising the types is safe at a desk; changing reconnect *timing or
+Re-parameterising the types was safe at a desk; changing reconnect *timing or
 policy* is not, and needs a bike.
 
-### Move A — open the state model
+**Outcome.** The nine watcher tests pass with one import line changed and no
+assertion touched. `GearWatcher` composes the generic watcher rather than
+subclassing it — the generic event map has no notion of a gear, and forwarding
+three events keeps it that way. `watchLiveState` gained an optional decoder
+through overloads, so the existing call form stays sound with no cast at the
+public boundary.
+
+### Move A — open the state model  ✅ done
 
 The breaking one. Do it with the net fully in place and already exercised.
 
@@ -179,8 +213,17 @@ The breaking one. Do it with the net fully in place and already exercised.
 | **Proof** | Characterization snapshot proves values unchanged; `state.test.ts` rewritten against the new shape; `tsc --noEmit` across both apps catches every structural miss; `check:docs`; `simulate --assert`; manual emulator pass |
 | **Hardware** | None |
 
-Three consumer files and one type import. That is the entire external cost, and
-it only stays that small while the package is at 0.1.
+Three consumer files and one type import. That was the entire external cost, and
+it only stayed that small because the package was still at 0.1.
+
+**Outcome.** Shipped as 0.2.0 with migration notes in
+[CHANGELOG.md](CHANGELOG.md), and no deprecated accessors: getters would have
+stopped the state being plain data. The characterization snapshot changed, as
+predicted, and the diff is the evidence — every previously captured value
+identical in its new place, plus MicroAdjust and rear trim, which the flat
+record had been decoding and then discarding for want of a slot. The demo now
+hides the drivetrain card entirely for a component that has no drivetrain, which
+is the behaviour the old shape could not express.
 
 ### Move D — component profile registry
 
@@ -238,19 +281,24 @@ new component, not to restructure how knowledge is held.
 
 ## Order of work
 
-Ascending risk, so the safety net gets exercised on cheap changes first.
+Ascending risk, so the safety net got exercised on cheap changes first.
 
-1. **Phase 0** — export snapshot, fixture and characterization test,
+1. ✅ **Phase 0** — export guard, capture fixture and characterization test,
    `simulate --assert` in CI, neutral smoke symbol.
-2. **Move C** — message profiles. Library-only, zero app impact.
-3. **Move B** — `LiveStateWatcher<T>`, `GearWatcher` retained as a wrapper.
-4. **Move A** — open the state model. Breaking; bump to 0.2.
+2. ✅ **Move C** — message profiles. Library-only, zero app impact.
+3. ✅ **Move B** — `LiveStateWatcher<T>`, `GearWatcher` retained as a wrapper.
+4. ✅ **Move A** — open the state model. Breaking; shipped as 0.2.0.
 5. **Moves D + F** — component profiles with a second simulated family.
 6. **Move G** — bike-level aggregate, when Flight Attendant work begins.
 7. **Move E** — control boundary, before any write is written.
 
-Steps 2 through 4 are independent of each other; the ordering is chosen for risk
-management, not dependency.
+Steps 2 through 4 were independent of each other; the ordering was chosen for
+risk management, not dependency. It held up — nothing had to be revisited.
+
+**One item is outstanding from the definition of done below:** no emulator pass
+has been run against the reworked demo screens. Every automated gate is green,
+which covers structure; the drivetrain card and the gear strip were edited and
+have not been seen rendering.
 
 ## Definition of done, per step
 

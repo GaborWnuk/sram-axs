@@ -6,9 +6,15 @@ by derailleurs, dropper posts, power meters and suspension. This document asks
 how much of the codebase actually assumes a derailleur, and marks where it
 should end up before that assumption becomes load-bearing.
 
-> Code in the *target* sections is a proposal. It describes APIs that do not
-> exist yet, and is deliberately excluded from the documentation type-check that
-> covers `README.md` and the package READMEs.
+> **Status, 2026-08-16.** Moves A, B and C have landed, in 0.2.0. Findings 1, 2
+> and 3 below describe the state the library was in before them and are kept
+> because they are the reasoning behind the shape it has now; each carries a
+> note saying what replaced it. Finding 4, and moves D through G, are still
+> ahead.
+>
+> Code in the *target* sections that has not landed is a proposal, and is
+> excluded from the documentation type-check that covers `README.md` and the
+> package READMEs. The parts that have landed are covered by it.
 
 For how each move gets sequenced and proven — blast radius, what validates it,
 and what needs hardware — see [REFACTORING.md](REFACTORING.md).
@@ -65,7 +71,8 @@ graph TD
     class WATCH,STATE,SB bias
 ```
 
-Green is component-neutral today. Red is where the derailleur leaked in.
+Green was component-neutral already. Red is where the derailleur had leaked in —
+all three are now resolved; see the notes under each finding.
 
 ### What is already neutral
 
@@ -90,6 +97,10 @@ So the pipeline is not the problem. Three specific things are.
 ---
 
 ## Finding 1 — the state model is a closed, flat record
+
+> **Resolved in 0.2.0 (Move A).** Component state moved under `state.domains`,
+> contributed by reducers. Two values that were being decoded and silently
+> discarded — MicroAdjust and rear trim — now have somewhere to land.
 
 `AxsDeviceState` in [state.ts](packages/axs-core/src/state.ts) gives gear
 top-level status alongside identity:
@@ -119,6 +130,9 @@ directly; the demo dashboard reads `state.shiftCount`.
 
 ## Finding 2 — the watcher is 90% generic and 10% drivetrain
 
+> **Resolved in 0.2.0 (Move B).** `LiveStateWatcher<T>` owns the machinery;
+> `GearWatcher` is it with the drivetrain decoder wired in, unchanged in shape.
+
 [gear-watcher.ts](packages/axs-core/src/axs/gear-watcher.ts) is the most
 valuable file in the package, because it encodes what the hardware actually
 does: components serve one central at a time, they drop idle links within
@@ -141,6 +155,9 @@ re-learned wrongly.
 
 ## Finding 3 — the encrypted channel is a multiplexed pipe with a hardcoded router
 
+> **Resolved in 0.2.0 (Move C).** Message profiles route by protobuf field
+> number; `createSrambondDecoder` now only peels off AES-EAX.
+
 `createSrambondDecoder` in [srambond.ts](packages/axs-core/src/axs/srambond.ts)
 decrypts (generic), then tries `drivetrain_status` (fields 20–22), then
 `drivetrain_config` (23–25), then falls back to hex.
@@ -155,6 +172,8 @@ The unmapped fallback that emits `decryptedHex` should stay exactly as it is —
 during reverse engineering it is the most useful output in the library.
 
 ## Finding 4 — everything is single-device, and Flight Attendant is not
+
+> **Still open.** Addressed by Move G, when Flight Attendant work begins.
 
 This one has nothing to do with naming. `AxsProbe.probe(deviceId)` yields one
 `DeviceSession`; `StateAggregator` is constructed per device; the demo tracks
@@ -173,12 +192,12 @@ expresses it, and gear-only work would never have surfaced the gap.
 
 ### Secondary, cheap to fix
 
-- The CI entry-point smoke test asserts `GearWatcher` is a function. The canary
-  for "does the package load" should not be a drivetrain name — `AxsProbe` is
-  the neutral choice.
-- `simulatedDerailleur` is the only simulated device. Given that the entire
-  hardware-free test story rests on the simulator, each new family needs one;
-  `FakeDeviceSpec` is already generic enough to take them.
+- ~~The CI entry-point smoke test asserts `GearWatcher` is a function.~~ Done:
+  the canary is `AxsProbe`, since "did the bundle load" should not be tied to a
+  component-specific name.
+- `simulatedDerailleur` is still the only simulated device. Given that the
+  entire hardware-free test story rests on the simulator, each new family needs
+  one; `FakeDeviceSpec` is already generic enough to take them (Move F).
 - `apps/cli` has a `gear` command and the demo has `LiveGear`. App-level naming
   is fine and should stay concrete.
 
@@ -245,7 +264,7 @@ graph TD
     P --> C --> R --> M --> B
 ```
 
-### Move A — open the state model
+### Move A — open the state model  ✅ landed in 0.2.0
 
 Keep flat what is genuinely universal; namespace what is not.
 
@@ -270,16 +289,25 @@ interface AxsDeviceState {
 ```
 
 `StateAggregator` stops knowing field names and becomes a dispatcher over
-**domain reducers**, each declaring which decoded fields it consumes:
+**domain reducers**, each declaring which decoded fields it consumes. As
+shipped:
 
 ```ts
 interface DomainReducer<S> {
   domain: string;
   /** Decoded field names this reducer reacts to. */
   consumes: readonly string[];
-  reduce(state: S | undefined, fields: Record<string, unknown>, meta: Provenance): S | undefined;
+  create(): S;
+  /** Fold one decoding in. Return true if anything semantically changed. */
+  ingest(state: S, context: DomainContext): boolean;
 }
 ```
+
+`DomainContext` lends the reducer the parts that are genuinely universal —
+confidence arbitration through `store`, field reading through `number`, and
+`emit`. Reducers over different state types cannot sit in one list as
+`DomainReducer<S>`, so `defineDomain` seals the type parameter and returns an
+`AnyDomainReducer`; the same pattern as `defineMessage` in Move C.
 
 The shift-count arithmetic and the `shift` event move into the drivetrain
 reducer, where they belong. Confidence-based overwriting and provenance stay in
@@ -291,10 +319,15 @@ first-class question, which is precisely what a UI needs in order to render a
 dropper post without a gear widget.
 
 **This is breaking.** At 0.1.0 that costs almost nothing; after 1.0 it costs a
-major version and every consumer's time. Deprecated `gearRear` accessors can
-bridge one release.
+major version and every consumer's time.
 
-### Move B — generalise the watcher, keep the ergonomic wrapper
+Shipped without deprecated accessors: returning an object with getters would
+have stopped the state being plain data, and there were three consumer files.
+Migration is in [CHANGELOG.md](CHANGELOG.md). Two values that the flat record
+had nowhere to put — MicroAdjust and rear trim — were being decoded and
+discarded, and now land in the drivetrain domain.
+
+### Move B — generalise the watcher, keep the ergonomic wrapper  ✅ landed in 0.2.0
 
 ```ts
 interface LiveStateWatcherOptions<T> {
@@ -319,7 +352,7 @@ calls keep working.
 The payoff: the doorbell semantics, the backoff, the one-central rule and the
 in-flight guard are written once and inherited by every component family.
 
-### Move C — a message profile registry
+### Move C — a message profile registry  ✅ landed in 0.2.0
 
 ```ts
 interface MessageProfile<T> {
@@ -330,15 +363,18 @@ interface MessageProfile<T> {
   toFields(value: T): Record<string, unknown>;
 }
 
-createSrambondDecoder(key, profiles = AXS_MESSAGE_PROFILES);
+createSrambondDecoder(key, profiles = AXS_MESSAGES);
 ```
+
+Shipped with `defineMessage` sealing the decoded type, so profiles decoding to
+different shapes share one registry without a cast at the call site.
 
 Adding dropper support becomes one profile registration. The crypto layer never
 changes again, and `decryptLiveStateFrame` stays the single seam between "peel
 off AES-EAX" and "interpret the plaintext" — a split the code already has and
 should keep.
 
-### Move D — profiles keyed to the component, selected automatically
+### Move D — profiles keyed to the component, selected automatically  ⏳ next
 
 Today `identifyDevice` yields a kind from the advertisement and
 `axsModelKind(modelId)` yields one from `d905fe56`, but nothing connects a kind
@@ -405,19 +441,22 @@ the keyless decoder registry both survive that; a closed record with
 
 ## Sequencing
 
-Ordered by how much the cost grows if deferred.
+Done, in 0.2.0, in ascending order of risk so the safety net was exercised on
+cheap changes first:
 
-1. **Open the state model (Move A).** Breaking. Cheap now at 0.1.0, expensive
-   after 1.0. Do this first.
-2. **Generalise the watcher (Move B).** Non-breaking. Do it before a second
-   component tempts anyone to copy the file.
-3. **Message profile registry (Move C).** Non-breaking, additive.
-4. **Component profile registry (Move D).** Non-breaking, new surface.
-5. **Control boundary (Move E).** A decision, not code. Needs to exist before
+1. ✅ **Phase 0** — the safety net itself. See [REFACTORING.md](REFACTORING.md).
+2. ✅ **Message profile registry (Move C).** Library-only; no app consumers.
+3. ✅ **Generalise the watcher (Move B).** Non-breaking; `GearWatcher` retained.
+4. ✅ **Open the state model (Move A).** Breaking; 0.2.0.
+
+Still ahead:
+
+5. **Component profile registry (Move D)**, with **a second simulated family
+   (Move F)** — they are only meaningful together.
+6. **Bike-level aggregate (Move G)**, when Flight Attendant work begins.
+7. **Control boundary (Move E).** A decision, not code. Needs to exist before
    the first write is written, not during.
-6. **Simulators and the bike-level aggregate (Moves F, G).** Land alongside the
-   first component that needs them.
 
-Nothing here requires hardware to start. Moves A through D are refactors of code
-that is already tested against captured frames, so the existing suite is the
-safety net.
+None of 1-4 needed hardware, and neither does building 5. The bike is required
+to confirm a new component's field numbers, to measure the concurrent-link
+ceiling for Move G, and for anything in Move E.
