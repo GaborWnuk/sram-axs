@@ -1,5 +1,10 @@
 # sram-axs
 
+[![CI](https://github.com/GaborWnuk/sram-axs/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/GaborWnuk/sram-axs/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/GaborWnuk/sram-axs/branch/main/graph/badge.svg)](https://codecov.io/gh/GaborWnuk/sram-axs)
+[![npm](https://img.shields.io/npm/v/@gaborwnuk/axs-core.svg)](https://www.npmjs.com/package/@gaborwnuk/axs-core)
+[![license](https://img.shields.io/badge/license-MPL--2.0-blue.svg)](LICENSE)
+
 Read live state — including **current gear** — from SRAM AXS components over
 Bluetooth Low Energy. A dependency-free TypeScript library, a CLI, and a demo app.
 
@@ -16,10 +21,25 @@ expected to work and will be confirmed as they become available; unverified mode
 identifiers are flagged as such in the library rather than asserted.
 
 ```
-packages/axs-core/   @axs/core — BLE reconnaissance, SRAMBond pairing, decoding
+packages/axs-core/   @gaborwnuk/axs-core — BLE reconnaissance, SRAMBond pairing, decoding
 apps/cli/            axs — scan, pair, read gear from a laptop
 apps/demo/           Expo app: scan, GATT explorer, raw logger, ride dashboard
 ```
+
+## The demo app
+
+<p align="center">
+  <img src="docs/screenshots/scan.png" alt="Scan screen listing SRAM components" width="24%">
+  <img src="docs/screenshots/pairing.png" alt="Pairing gated on holding the AXS button" width="24%">
+  <img src="docs/screenshots/live-gear.png" alt="Live rear gear read over BLE" width="24%">
+  <img src="docs/screenshots/analysis.png" alt="Byte volatility analysis per characteristic" width="24%">
+</p>
+
+<p align="center">
+  <em>Scan · pair · live gear · byte-volatility analysis. Captured from the built-in
+  simulator, so every value shown is synthetic — the same screens run against real
+  hardware.</em>
+</p>
 
 ## Start here
 
@@ -50,7 +70,7 @@ Then either point it at a real component (see [Usage](#usage)) or run the whole
 pipeline against the built-in simulator, which needs no bike:
 
 ```bash
-npm run axs -w @axs/cli -- simulate
+npm run axs -w @gaborwnuk/axs-cli -- simulate
 ```
 
 ## Usage
@@ -64,16 +84,16 @@ Wake it first — press the AXS button, or bounce the bike. AXS parts sleep hard
 and a silent scan almost always means asleep rather than broken.
 
 ```console
-$ npm run axs -w @axs/cli -- scan --sram
+$ npm run axs -w @gaborwnuk/axs-cli -- scan --sram
 
 Scanning for 15s…
- SRAM  SRAM 1503603158            -65dBm  2638ea70d62284026a0faaa4335a3488
+ SRAM  SRAM 1234567890            -65dBm  a1b2c3d4e5f60718293a4b5c6d7e8f90
          mfg payload: 00 00 01 02 00 04 05 29 1e 03 80 37
 
 9 devices, 1 SRAM.
 ```
 
-The advertised name carries the serial, so `SRAM 1503603158` is the derailleur.
+The advertised name carries the serial, so `SRAM 1234567890` is the derailleur.
 The long hex string is the platform's device id — that is what the other commands
 take.
 
@@ -85,7 +105,7 @@ mode — **hold its AXS button until the light blinks**. This is the one command
 that writes to the device.
 
 ```console
-$ npm run axs -w @axs/cli -- bond 2638ea70d62284026a0faaa4335a3488
+$ npm run axs -w @gaborwnuk/axs-cli -- bond a1b2c3d4e5f60718293a4b5c6d7e8f90
 
 Offline create-bond — writes to the SRAMBond service only, never the firmware path.
 
@@ -98,7 +118,7 @@ Offline create-bond — writes to the SRAMBond service only, never the firmware 
     · bonded
 
   Bonded. Device key: 0f1e2d3c4b5a69788796a5b4c3d2e1f0
-  Reuse it read-only with:  gear 2638ea70d62284026a0faaa4335a3488 --key 0f1e2d3c…
+  Reuse it read-only with:  gear a1b2c3d4e5f60718293a4b5c6d7e8f90 --key 0f1e2d3c…
 ```
 
 (The key above is redacted — a real one is specific to your component.)
@@ -114,7 +134,7 @@ the official SRAM app re-bonds itself the next time it connects.
 ### 3. Read live gear
 
 ```console
-$ npm run axs -w @axs/cli -- gear 2638ea70d62284026a0faaa4335a3488 \
+$ npm run axs -w @gaborwnuk/axs-cli -- gear a1b2c3d4e5f60718293a4b5c6d7e8f90 \
     --key 0f1e2d3c4b5a69788796a5b4c3d2e1f0 --seconds 180
 
 Reading gear for 180s — read-only, reconnecting automatically if the link drops.
@@ -138,7 +158,7 @@ its own with exponential backoff and carries on.
 decryption and the reconnects.
 
 ```ts
-import { GearWatcher } from "@axs/core";
+import { GearWatcher } from "@gaborwnuk/axs-core";
 
 const watcher = new GearWatcher(transport, deviceId, {
   deviceKey,                 // 16 bytes, from `bond` or a previous session
@@ -172,7 +192,7 @@ React Native.
 ### Pairing from your own code
 
 ```ts
-import { createBond, GearWatcher } from "@axs/core";
+import { createBond, GearWatcher } from "@gaborwnuk/axs-core";
 
 const peripheral = await transport.connect(deviceId);
 const deviceKey = await createBond(peripheral, {
@@ -192,10 +212,10 @@ Serial, model, firmware, battery, MicroAdjust and the cumulative shift counter
 are all readable **without** a key:
 
 ```console
-$ npm run axs -w @axs/cli -- probe 2638ea70d62284026a0faaa4335a3488
+$ npm run axs -w @gaborwnuk/axs-cli -- probe a1b2c3d4e5f60718293a4b5c6d7e8f90
 
 Model          RD-GX-E-B1
-Serial         1503603158
+Serial         1234567890
 Firmware       2.55.6      (build g313caa0ed6.dir)
 Battery        93%
 MicroAdjust    12 (range 1–23)
@@ -211,7 +231,7 @@ The simulator speaks the real AXS shapes, encryption included, so the whole
 pipeline — bond, decrypt, gear — runs with no bike:
 
 ```ts
-import { FakeTransport, simulatedDerailleur, SIMULATOR_DEVICE_KEY, GearWatcher } from "@axs/core";
+import { FakeTransport, simulatedDerailleur, SIMULATOR_DEVICE_KEY, GearWatcher } from "@gaborwnuk/axs-core";
 
 const transport = new FakeTransport([simulatedDerailleur()]);
 const watcher = new GearWatcher(transport, "sim-rd-0001", {
@@ -221,12 +241,12 @@ const watcher = new GearWatcher(transport, "sim-rd-0001", {
 
 ## What works today
 
-Verified against a real `RD-GX-E-B1` (serial 1503603158) and cross-checked
-against the SRAM AXS app. Running `npm run axs -w @axs/cli -- probe <id>` prints:
+Verified against a real `RD-GX-E-B1` and cross-checked
+against the SRAM AXS app. Running `npm run axs -w @gaborwnuk/axs-cli -- probe <id>` prints:
 
 ```
 Model          RD-GX-E-B1
-Serial         1503603158
+Serial         1234567890
 Firmware       2.55.6      (build g313caa0ed6.dir)
 Battery        93%
 MicroAdjust    12 (range 1–23)
@@ -267,12 +287,12 @@ handshake itself:
 - Once you hold the key, a plain read of `d905000b` decrypts directly — no session
   needed.
 
-Both the crypto and the handshake are implemented in `@axs/core` and verified
+Both the crypto and the handshake are implemented in `@gaborwnuk/axs-core` and verified
 byte-for-byte against real captured bonds. From a laptop with no phone involved:
 
 ```
-npm run axs -w @axs/cli -- bond <id>      # offline self-pair, print key, read gear
-npm run axs -w @axs/cli -- gear <id> --key <hex>   # read-only gear with a known key
+npm run axs -w @gaborwnuk/axs-cli -- bond <id>      # offline self-pair, print key, read gear
+npm run axs -w @gaborwnuk/axs-cli -- gear <id> --key <hex>   # read-only gear with a known key
 ```
 
 A live `bond` then tracked a full cassette sweep in real time (`1 2 … 12 … 1`),
@@ -358,11 +378,11 @@ up with no further wiring.
 | `npm test` | Core unit tests (173, no hardware needed) |
 | `npm run lint` | ESLint + typescript-eslint across the monorepo |
 | `npm run typecheck` | Typecheck all workspaces |
-| `npm run build` | Build `@axs/core` (ESM + CJS + types) |
+| `npm run build` | Build `@gaborwnuk/axs-core` (ESM + CJS + types) |
 | `npm run check` | All of the above, in order |
-| `npm run axs -w @axs/cli -- scan` | Find nearby AXS components |
-| `npm run axs -w @axs/cli -- bond <id>` | Offline self-pair, then read live gear |
-| `npm run axs -w @axs/cli -- gear <id> --key <hex>` | Read-only live gear with a known key |
+| `npm run axs -w @gaborwnuk/axs-cli -- scan` | Find nearby AXS components |
+| `npm run axs -w @gaborwnuk/axs-cli -- bond <id>` | Offline self-pair, then read live gear |
+| `npm run axs -w @gaborwnuk/axs-cli -- gear <id> --key <hex>` | Read-only live gear with a known key |
 | `npm run demo` | Start the Expo dev server |
 
 ## Licence
