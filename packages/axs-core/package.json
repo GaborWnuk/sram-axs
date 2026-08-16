@@ -63,8 +63,7 @@
     "url": "https://github.com/GaborWnuk/sram-axs/issues"
   },
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "engines": {
     "node": ">=20"

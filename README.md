@@ -41,6 +41,9 @@ apps/demo/           Expo app: scan, GATT explorer, raw logger, ride dashboard
   hardware.</em>
 </p>
 
+Published to npm as [`@gaborwnuk/axs-core`](https://www.npmjs.com/package/@gaborwnuk/axs-core);
+release steps are in [`RELEASING.md`](RELEASING.md).
+
 ## Start here
 
 Read [`PROTOCOL.md`](PROTOCOL.md) — the complete protocol description, with flow

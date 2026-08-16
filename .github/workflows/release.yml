@@ -1,15 +1,16 @@
-# Release: publish @gaborwnuk/axs-core to npm and cut a GitHub release.
+# Release: cut a GitHub release when a version tag is pushed.
 #
-# Triggered by pushing a version tag:
-#
-#     npm version minor --workspace=@gaborwnuk/axs-core   # bumps package.json
+#     npm version minor --workspace=@gaborwnuk/axs-core
 #     git commit -am "release: axs-core 0.2.0"
 #     git tag v0.2.0 && git push origin main --tags
 #
-# Publishing and releasing are two jobs rather than two workflows on purpose:
-# they must be ordered. A GitHub release announcing a version that failed to
-# reach npm is worse than no release at all, so `github-release` waits on
-# `publish-npm` and is skipped if publishing fails.
+# Publishing to npm is deliberately NOT automated here. It is done by hand (see
+# RELEASING.md), because an npm automation token has to be rotated every 90 days
+# and a long-lived publish credential sitting in repository secrets is a bigger
+# liability than the convenience is worth.
+#
+# This workflow therefore needs no secrets at all: it runs on the automatic
+# GITHUB_TOKEN, which is scoped to this repository and expires with the job.
 name: Release
 
 on:
@@ -20,30 +21,29 @@ permissions:
   contents: read
 
 jobs:
-  publish-npm:
-    name: Publish to npm
+  github-release:
+    name: Create GitHub release
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      # Required for npm provenance, which attests that this tarball was built
-      # from this commit in this repository.
-      id-token: write
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history so the generated notes can diff against the last tag.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
         run: npm ci
 
-      # The tag is the release's only source of truth for humans, and
-      # package.json is the only one for npm. If they disagree, stop: publishing
-      # 0.1.0 from a tag reading v0.2.0 produces a mismatch nobody can undo.
+      # The tag is the release's source of truth for humans, package.json is
+      # npm's. If they disagree, stop before a release exists claiming a version
+      # that was never published.
       - name: Verify tag matches package version
         run: |
           TAG="${GITHUB_REF_NAME#v}"
@@ -54,7 +54,7 @@ jobs:
             exit 1
           fi
 
-      # A release must clear exactly the same bar as any other commit.
+      # A tagged release must clear the same bar as any other commit.
       - name: Lint
         run: npm run lint
 
@@ -67,39 +67,10 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Publish
-        run: npm publish --workspace=@gaborwnuk/axs-core
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      # Kept for the GitHub release, so the attached artifact is byte-identical
-      # to what was published rather than a second, separate build.
-      - name: Pack tarball for the release
+      # The same tarball `npm publish` would upload, attached so the release is
+      # inspectable without trusting the registry copy.
+      - name: Pack tarball
         run: npm pack --workspace=@gaborwnuk/axs-core --pack-destination ./dist-artifacts
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: npm-tarball
-          path: dist-artifacts/*.tgz
-          retention-days: 7
-
-  github-release:
-    name: Create GitHub release
-    runs-on: ubuntu-latest
-    needs: publish-npm
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          # Full history so the generated notes can diff against the last tag.
-          fetch-depth: 0
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: npm-tarball
-          path: dist-artifacts
 
       - name: Create release
         env:
@@ -113,8 +84,7 @@ jobs:
             echo "npm install @gaborwnuk/axs-core@${VERSION}"
             echo '```'
             echo
-            echo "Published to npm with build provenance. The attached tarball is the"
-            echo "artifact that was published."
+            echo "The attached tarball is the artifact built from this tag."
           } > release-notes.md
 
           gh release create "$GITHUB_REF_NAME" \
