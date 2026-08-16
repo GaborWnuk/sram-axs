@@ -54,7 +54,12 @@ jobs:
             exit 1
           fi
 
-      # A tagged release must clear the same bar as any other commit.
+      # A tagged release must clear the same bar as any other commit. Build
+      # first: the apps resolve the library's types through its emitted
+      # dist/index.d.ts, which does not exist on a clean checkout.
+      - name: Build
+        run: npm run build
+
       - name: Lint
         run: npm run lint
 
@@ -63,9 +68,6 @@ jobs:
 
       - name: Test
         run: npm test
-
-      - name: Build
-        run: npm run build
 
       # The same tarball `npm publish` would upload, attached so the release is
       # inspectable without trusting the registry copy.

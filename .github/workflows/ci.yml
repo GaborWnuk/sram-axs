@@ -39,6 +39,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Build first. The CLI and demo import the library by package name, so
+      # they resolve its types through the emitted dist/index.d.ts. On a clean
+      # checkout that file does not exist yet, every import degrades to `any`,
+      # and lint fails with a wall of no-unsafe-* errors that say nothing about
+      # the actual code.
+      - name: Build
+        run: npm run build
+
       - name: Lint
         run: npm run lint
 
@@ -47,9 +55,6 @@ jobs:
 
       - name: Test with coverage
         run: npm run test:coverage --workspace=@gaborwnuk/axs-core
-
-      - name: Build
-        run: npm run build
 
       # The package is published from this build, so a tarball that does not
       # resolve is worth catching now rather than at release time.
