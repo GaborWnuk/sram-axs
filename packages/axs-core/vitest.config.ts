@@ -10,6 +10,12 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    // JUnit XML feeds Codecov's test analytics (run times, failure rates, flaky
+    // detection). Only under CI: locally it would litter the package with an
+    // XML file nobody reads, and the default reporter is nicer to work with.
+    reporters: process.env.CI ? ["default", "junit"] : ["default"],
+    outputFile: { junit: "./test-report.junit.xml" },
+
     coverage: {
       provider: "v8",
       // `lcov` is what Codecov consumes; `text` keeps the CI log readable and

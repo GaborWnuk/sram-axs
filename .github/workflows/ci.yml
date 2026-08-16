@@ -81,3 +81,15 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           # A coverage upload hiccup should not fail an otherwise good build.
           fail_ci_if_error: false
+
+      # Runs even when the test step failed -- a failing run is precisely the
+      # one whose results are worth recording, and skipping it would hide the
+      # failure and flake history that test analytics exists to surface.
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/test-results-action@v1
+        with:
+          files: packages/axs-core/test-report.junit.xml
+          flags: axs-core
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false

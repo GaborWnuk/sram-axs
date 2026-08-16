@@ -56,3 +56,6 @@ yarn-error.log*
 # Test coverage output
 coverage/
 *.lcov
+
+# Test analytics report (generated in CI)
+test-report.junit.xml
