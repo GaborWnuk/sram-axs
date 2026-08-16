@@ -13,21 +13,42 @@
  * gear index four seconds later. This folds them into one object the UI can
  * render, and records *where each value came from* so a dashboard can show a
  * confirmed reading differently from a speculative one.
+ *
+ * The shape has two halves, and the split is the point. Identity, firmware and
+ * battery are flat, because every AXS component has them. Everything
+ * component-specific lives under `domains`, contributed by a
+ * {@link DomainReducer}, and a domain is present only if the component actually
+ * reports it — so a dropper post carries no empty drivetrain, and "what does
+ * this component do" is a question the state can answer.
+ *
+ * This module knows nothing about gears. That knowledge is in
+ * `axs/drivetrain-domain.ts`.
  */
 
+import { drivetrainDomain, type DrivetrainDomain } from "./axs/drivetrain-domain.js";
+import {
+  type AnyDomainReducer,
+  type DomainContext,
+  type DomainEvents,
+  type StoredValue,
+  type ValueSource,
+} from "./domain.js";
 import { Emitter } from "./emitter.js";
 import type { DecodedResult, RawFrame } from "./frame.js";
 import type { DecoderRegistry } from "./decode/registry.js";
 
-/** Provenance of a single state value. */
-export interface ValueSource<T> {
-  value: T;
-  /** Decoder that produced it. */
-  decoder: string;
-  /** 0..1, carried through from the decoder. */
-  confidence: number;
-  /** When it was last updated, ms since epoch. */
-  updatedAt: number;
+export type { ValueSource } from "./domain.js";
+
+/**
+ * Component-specific state, keyed by domain.
+ *
+ * Known domains are named so they type properly; the index signature keeps
+ * reducers this build has never heard of readable. Adding a component family
+ * adds one line here and a reducer module — no change to the aggregator.
+ */
+export interface AxsDomains {
+  drivetrain?: DrivetrainDomain;
+  [domain: string]: unknown;
 }
 
 export interface AxsDeviceState {
@@ -46,19 +67,16 @@ export interface AxsDeviceState {
   /** Battery volts, when a decoder reports one. */
   batteryVolts: ValueSource<number> | null;
 
-  /** Current rear gear index. Null until something decodes one. */
-  gearRear: ValueSource<number> | null;
-  gearFront: ValueSource<number> | null;
-  totalRear: ValueSource<number> | null;
-  totalFront: ValueSource<number> | null;
-
-  /** Cumulative shift count: gear transitions plus the component's own counter. */
-  shiftCount: number;
+  /** Component-specific state. Only domains this component reports appear. */
+  domains: AxsDomains;
 
   /** Total frames folded into this state. */
   frameCount: number;
   lastUpdateAt: number | null;
 }
+
+/** The reducers enabled by default. */
+export const DEFAULT_DOMAIN_REDUCERS: readonly AnyDomainReducer[] = [drivetrainDomain];
 
 function emptyState(deviceId: string, deviceName: string | null): AxsDeviceState {
   return {
@@ -72,22 +90,17 @@ function emptyState(deviceId: string, deviceName: string | null): AxsDeviceState
     softwareRevision: null,
     batteryPercent: null,
     batteryVolts: null,
-    gearRear: null,
-    gearFront: null,
-    totalRear: null,
-    totalFront: null,
-    shiftCount: 0,
+    domains: {},
     frameCount: 0,
     lastUpdateAt: null,
   };
 }
 
-interface StateEvents extends Record<string, unknown> {
+interface StateEvents extends DomainEvents {
   change: AxsDeviceState;
-  shift: { from: number | null; to: number | null; totalShifts: number };
 }
 
-/** String state keys that map directly from a decoded field of the same name. */
+/** Universal string values, mapped straight from a decoded field of the same name. */
 const STRING_FIELDS = [
   "manufacturerName",
   "modelNumber",
@@ -95,6 +108,12 @@ const STRING_FIELDS = [
   "hardwareRevision",
   "firmwareRevision",
   "softwareRevision",
+] as const;
+
+/** Universal numeric values, and the decoded field each comes from. */
+const NUMBER_FIELDS = [
+  ["batteryPercent", "batteryPercent"],
+  ["batteryVolts", "voltage"],
 ] as const;
 
 /**
@@ -107,12 +126,12 @@ export class StateAggregator {
   readonly events = new Emitter<StateEvents>();
 
   private state: AxsDeviceState;
-  private lastShiftCounter: number | null = null;
 
   constructor(
     deviceId: string,
     deviceName: string | null,
     private readonly registry: DecoderRegistry,
+    private readonly reducers: readonly AnyDomainReducer[] = DEFAULT_DOMAIN_REDUCERS,
   ) {
     this.state = emptyState(deviceId, deviceName);
   }
@@ -123,23 +142,30 @@ export class StateAggregator {
 
   reset(): void {
     this.state = emptyState(this.state.deviceId, this.state.deviceName);
-    this.lastShiftCounter = null;
     this.events.emit("change", this.state);
   }
 
-  /** Only accept a value when it is at least as trustworthy as the one held. */
-  private shouldReplace<T>(existing: ValueSource<T> | null, confidence: number): boolean {
-    return existing === null || confidence >= existing.confidence;
+  /** Arbitrate a new value against the one held. Null when the held one wins. */
+  private arbitrate<T>(
+    existing: ValueSource<T> | null,
+    value: T,
+    decoding: DecodedResult,
+    now: number,
+  ): StoredValue<T> | null {
+    if (existing !== null && decoding.confidence < existing.confidence) return null;
+
+    return {
+      value: {
+        value,
+        decoder: decoding.decoder,
+        confidence: decoding.confidence,
+        updatedAt: now,
+      },
+      changed: existing === null || existing.value !== value,
+    };
   }
 
-  /**
-   * Store a value, returning whether it represents a *semantic* change.
-   *
-   * Re-storing an identical value refreshes provenance (so staleness checks
-   * stay accurate) but reports no change. Without this, a 4 Hz rebroadcast of
-   * an unchanged gear would emit a change event four times a second and force
-   * the UI to re-render continuously.
-   */
+  /** Store a universal value, returning whether it semantically changed. */
   private set<K extends keyof AxsDeviceState>(
     key: K,
     value: AxsDeviceState[K] extends ValueSource<infer T> | null ? T : never,
@@ -147,18 +173,11 @@ export class StateAggregator {
     now: number,
   ): boolean {
     const existing = this.state[key] as ValueSource<unknown> | null;
-    if (!this.shouldReplace(existing, decoding.confidence)) return false;
+    const stored = this.arbitrate(existing, value, decoding, now);
+    if (stored === null) return false;
 
-    const isSameValue = existing !== null && existing.value === value;
-
-    (this.state[key] as unknown) = {
-      value,
-      decoder: decoding.decoder,
-      confidence: decoding.confidence,
-      updatedAt: now,
-    } satisfies ValueSource<unknown>;
-
-    return !isSameValue;
+    (this.state[key] as unknown) = stored.value;
+    return stored.changed;
   }
 
   /** Fold one frame in. Decodes it if decodings are not supplied. */
@@ -177,62 +196,12 @@ export class StateAggregator {
         if (typeof value === "string" && this.set(key, value, decoding, now)) changed = true;
       }
 
-      if (typeof fields.batteryPercent === "number") {
-        if (this.set("batteryPercent", fields.batteryPercent, decoding, now)) changed = true;
-      }
-      if (typeof fields.voltage === "number") {
-        if (this.set("batteryVolts", fields.voltage, decoding, now)) changed = true;
+      for (const [key, field] of NUMBER_FIELDS) {
+        const value = fields[field];
+        if (typeof value === "number" && this.set(key, value, decoding, now)) changed = true;
       }
 
-      if (typeof fields.totalRear === "number") {
-        if (this.set("totalRear", fields.totalRear, decoding, now)) changed = true;
-      }
-      if (typeof fields.totalFront === "number") {
-        if (this.set("totalFront", fields.totalFront, decoding, now)) changed = true;
-      }
-
-      // Gear. A shift is reported when the decrypted drivetrain_status shows a
-      // different rear position than the one held; re-reads of an unchanged
-      // frame must not register as a shift.
-      if ("gearRear" in fields) {
-        const previous = this.state.gearRear?.value ?? null;
-        const gear = fields.gearRear;
-
-        if (typeof gear === "number" && this.set("gearRear", gear, decoding, now)) {
-          changed = true;
-          if (previous !== null && previous !== gear) {
-            this.state.shiftCount += 1;
-            this.events.emit("shift", {
-              from: previous,
-              to: gear,
-              totalShifts: this.state.shiftCount,
-            });
-          }
-        }
-      }
-
-      // The component also keeps its own cumulative shift counter in the
-      // plaintext usage record (`d9050003`). When present it is authoritative —
-      // it counts shifts made while disconnected, and survives gaps in
-      // polling that gear-change detection alone would miss. It wraps at 256.
-      if (typeof fields.axsShiftCount === "number") {
-        const counter = fields.axsShiftCount;
-        if (this.lastShiftCounter !== null && counter !== this.lastShiftCounter) {
-          const delta = (counter - this.lastShiftCounter + 256) % 256;
-          this.state.shiftCount += delta;
-          this.events.emit("shift", {
-            from: this.state.gearRear?.value ?? null,
-            to: this.state.gearRear?.value ?? null,
-            totalShifts: this.state.shiftCount,
-          });
-          changed = true;
-        }
-        this.lastShiftCounter = counter;
-      }
-
-      if (typeof fields.gearFront === "number") {
-        if (this.set("gearFront", fields.gearFront, decoding, now)) changed = true;
-      }
+      if (this.runReducers(decoding, now)) changed = true;
     }
 
     // Always advance the heartbeat — "when was the device last heard from"
@@ -243,5 +212,36 @@ export class StateAggregator {
     if (changed) this.events.emit("change", this.state);
 
     return this.state;
+  }
+
+  /** Offer one decoding to every reducer that cares about it. */
+  private runReducers(decoding: DecodedResult, now: number): boolean {
+    let changed = false;
+
+    const context: DomainContext = {
+      fields: decoding.fields,
+      decoder: decoding.decoder,
+      confidence: decoding.confidence,
+      timestamp: now,
+      store: (existing, value) => this.arbitrate(existing, value, decoding, now),
+      number: (field) => {
+        const value = decoding.fields[field];
+        return typeof value === "number" ? value : undefined;
+      },
+      emit: (event, payload) => this.events.emit(event, payload),
+    };
+
+    for (const reducer of this.reducers) {
+      // Skipping here is what keeps a domain absent until the component
+      // actually reports one, rather than every device carrying every domain.
+      if (!reducer.consumes.some((field) => field in decoding.fields)) continue;
+
+      const existing = this.state.domains[reducer.domain] ?? reducer.create();
+      this.state.domains[reducer.domain] = existing;
+
+      if (reducer.ingest(existing, context)) changed = true;
+    }
+
+    return changed;
   }
 }

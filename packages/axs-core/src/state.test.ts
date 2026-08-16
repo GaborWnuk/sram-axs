@@ -68,9 +68,10 @@ describe("StateAggregator", () => {
   it("starts empty", () => {
     const state = aggregator().current();
 
-    expect(state.gearRear).toBeNull();
+    // No frames folded in, so no component-specific domain exists yet. That is
+    // the point of the split: an unread device claims nothing about itself.
+    expect(state.domains.drivetrain).toBeUndefined();
     expect(state.firmwareRevision).toBeNull();
-    expect(state.shiftCount).toBe(0);
     expect(state.frameCount).toBe(0);
   });
 
@@ -94,8 +95,8 @@ describe("StateAggregator", () => {
     const agg = aggregator();
     agg.ingest(gearFrame(5));
 
-    expect(agg.current().gearRear?.value).toBe(5);
-    expect(agg.current().gearFront?.value).toBe(1);
+    expect(agg.current().domains.drivetrain?.gearRear?.value).toBe(5);
+    expect(agg.current().domains.drivetrain?.gearFront?.value).toBe(1);
   });
 
   it("does not count a re-read of an unchanged gear as a shift", () => {
@@ -106,7 +107,7 @@ describe("StateAggregator", () => {
     agg.ingest(gearFrame(5, 1));
     agg.ingest(gearFrame(5, 2));
 
-    expect(agg.current().shiftCount).toBe(0);
+    expect(agg.current().domains.drivetrain?.shiftCount).toBe(0);
   });
 
   it("counts a shift when the gear changes", () => {
@@ -115,8 +116,8 @@ describe("StateAggregator", () => {
     agg.ingest(gearFrame(6, 1));
     agg.ingest(gearFrame(7, 2));
 
-    expect(agg.current().shiftCount).toBe(2);
-    expect(agg.current().gearRear?.value).toBe(7);
+    expect(agg.current().domains.drivetrain?.shiftCount).toBe(2);
+    expect(agg.current().domains.drivetrain?.gearRear?.value).toBe(7);
   });
 
   it("emits a shift event carrying the gear transition", () => {
@@ -138,7 +139,7 @@ describe("StateAggregator", () => {
     agg.ingest(usageFrame(10, 0));
     agg.ingest(usageFrame(14, 1)); // four shifts happened out of range
 
-    expect(agg.current().shiftCount).toBe(4);
+    expect(agg.current().domains.drivetrain?.shiftCount).toBe(4);
   });
 
   it("handles wraparound of the component's shift counter", () => {
@@ -146,7 +147,7 @@ describe("StateAggregator", () => {
     agg.ingest(usageFrame(254, 0));
     agg.ingest(usageFrame(2, 1));
 
-    expect(agg.current().shiftCount).toBe(4);
+    expect(agg.current().domains.drivetrain?.shiftCount).toBe(4);
   });
 
   it("emits change events only when something actually changed", () => {
@@ -214,8 +215,7 @@ describe("StateAggregator", () => {
     agg.reset();
 
     const state = agg.current();
-    expect(state.gearRear).toBeNull();
-    expect(state.shiftCount).toBe(0);
+    expect(state.domains.drivetrain).toBeUndefined();
     expect(state.deviceId).toBe("device-1");
     expect(state.deviceName).toBe("SIM RD");
   });

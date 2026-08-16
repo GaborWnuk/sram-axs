@@ -117,7 +117,11 @@ export default function DashboardScreen() {
         <Card>
           <SectionTitle>Telemetry</SectionTitle>
           <Row label="Component" value={session.deviceName ?? session.deviceId} />
-          <Row label="Shifts observed" value={String(deviceState?.shiftCount ?? 0)} monospace />
+          <Row
+            label="Shifts observed"
+            value={String(deviceState?.domains.drivetrain?.shiftCount ?? 0)}
+            monospace
+          />
           <Row
             label="Battery"
             value={

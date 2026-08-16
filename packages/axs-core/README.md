@@ -107,8 +107,13 @@ const stop = watchLiveState(session.link, {
 
 ### 3. Or fold everything into one state object
 
-`StateAggregator` collects every decoded value — serial, firmware, battery,
-MicroAdjust, gear — with provenance. Gear enters through a keyed decoder:
+`StateAggregator` collects every decoded value with provenance. Identity,
+firmware and battery are flat, because every AXS component has them. Anything
+component-specific lives under `domains`, and a domain appears **only if the
+component reports it** — so a dropper post carries no empty drivetrain, and
+`Object.keys(state.domains)` answers "what is this thing".
+
+Gear enters through a keyed decoder:
 
 ```ts
 import {
@@ -135,6 +140,47 @@ state.events.on("shift", ({ from, to }) => console.log(`shifted ${from} → ${to
 // Required for gear: notifications alone carry no payload (see the note above),
 // so poll the live-state characteristic to turn reads into frames.
 const stopPolling = session.startPolling(250, (uuid) => uuid === LIVE_STATE_CHARACTERISTIC);
+
+// Gear, cassette, trim, MicroAdjust and shift count all live here.
+const gear = state.current().domains.drivetrain?.gearRear?.value;
+```
+
+Teaching the aggregator about a component it has never seen is a reducer, not an
+edit to the aggregator:
+
+```ts
+import { defineDomain, StateAggregator, DEFAULT_DOMAIN_REDUCERS } from "@gaborwnuk/axs-core";
+import type { DecoderRegistry, ValueSource } from "@gaborwnuk/axs-core";
+
+declare const registry: DecoderRegistry;
+
+interface DropperDomain {
+  position: ValueSource<number> | null;
+}
+
+const dropperDomain = defineDomain<DropperDomain>({
+  domain: "dropper",
+  // Decoded field names this reducer reacts to.
+  consumes: ["postPosition"],
+  create: () => ({ position: null }),
+  ingest(state, ctx) {
+    const value = ctx.number("postPosition");
+    if (value === undefined) return false;
+
+    // `store` arbitrates by confidence: a speculative reading never overwrites
+    // a confirmed one, whatever order they arrive in.
+    const stored = ctx.store(state.position, value);
+    if (stored === null) return false;
+
+    state.position = stored.value;
+    return stored.changed;
+  },
+});
+
+const aggregator = new StateAggregator("post-1", null, registry, [
+  ...DEFAULT_DOMAIN_REDUCERS,
+  dropperDomain,
+]);
 ```
 
 ## Design
@@ -230,6 +276,9 @@ declined, so registering the wrong key is harmless.
 | Export | Purpose |
 |---|---|
 | `StateAggregator` | Folds frames into one state object with provenance |
+| `defineDomain` / `DEFAULT_DOMAIN_REDUCERS` | Component-specific state, contributed per domain |
+| `defineMessage` / `AXS_MESSAGES` / `routeMessage` | Messages on the encrypted channel, by protobuf field number |
+| `LiveStateWatcher` | The reconnecting reader `GearWatcher` is built on, for any component |
 | `SessionRecorder` / `loadSession` / `replaySession` | Record, export and replay captures |
 | `FakeTransport` / `simulatedDerailleur` / `SIMULATOR_DEVICE_KEY` | Hardware-free simulator that speaks the real AXS shapes, encryption included |
 

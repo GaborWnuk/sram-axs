@@ -45,6 +45,7 @@ const RUNTIME_EXPORTS = [
   "BATTERY_SERVICE",
   "ByteChangeTracker",
   "DEFAULT_DECODERS",
+  "DEFAULT_DOMAIN_REDUCERS",
   "DEFAULT_RECONNECT_POLICY",
   "DEVICE_INFORMATION_SERVICE",
   "DIS_CHARACTERISTICS",
@@ -93,11 +94,13 @@ const RUNTIME_EXPORTS = [
   "decodeUsageRecord",
   "decryptLiveStateFrame",
   "decryptTransportedKey",
+  "defineDomain",
   "defineMessage",
   "describeUuid",
   "deserializeFrame",
   "disStringDecoder",
   "drivetrainConfigMessage",
+  "drivetrainDomain",
   "drivetrainStatusMessage",
   "eaxDecrypt",
   "eaxEncrypt",
@@ -152,9 +155,11 @@ const RUNTIME_EXPORTS = [
  */
 export type PublicTypes = {
   AnnotatedFrame: api.AnnotatedFrame;
+  AnyDomainReducer: api.AnyDomainReducer;
   AnyMessageProfile: api.AnyMessageProfile;
   AxsDeviceKind: api.AxsDeviceKind;
   AxsDeviceState: api.AxsDeviceState;
+  AxsDomains: api.AxsDomains;
   AxsFirmwareVersion: api.AxsFirmwareVersion;
   AxsMicroAdjust: api.AxsMicroAdjust;
   AxsModelInfo: api.AxsModelInfo;
@@ -169,8 +174,12 @@ export type PublicTypes = {
   DecodedResult: api.DecodedResult;
   Decoder: api.Decoder;
   DhGroup: api.DhGroup;
+  DomainContext: api.DomainContext;
+  DomainEvents: api.DomainEvents;
+  DomainReducer: api.DomainReducer<{ a: 1 }>;
   DiscoveredDevice: api.DiscoveredDevice;
   DrivetrainConfig: api.DrivetrainConfig;
+  DrivetrainDomain: api.DrivetrainDomain;
   DrivetrainStatus: api.DrivetrainStatus;
   EaxOptions: api.EaxOptions;
   Evidence: api.Evidence;
@@ -203,6 +212,7 @@ export type PublicTypes = {
   ScanResult: api.ScanResult;
   SerializedFrame: api.SerializedFrame;
   SessionDocument: api.SessionDocument;
+  StoredValue: api.StoredValue<number>;
   TransportUnsubscribe: api.TransportUnsubscribe;
   Unsubscribe: api.Unsubscribe;
   UuidCategory: api.UuidCategory;

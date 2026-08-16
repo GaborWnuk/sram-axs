@@ -299,6 +299,9 @@ function printSummary(
   aggregator: StateAggregator,
 ) {
   const state = aggregator.current();
+  // Component-specific values live under their domain; a component that is not
+  // a drivetrain simply has none, and the rows below render as "—".
+  const drivetrain = state.domains.drivetrain;
 
   console.log(c.bold("\n── Device state ─────────────────────────────────────────"));
   const rows: Array<[string, string]> = [
@@ -308,9 +311,16 @@ function printSummary(
     ["Firmware", state.firmwareRevision?.value ?? "—"],
     ["Hardware", state.hardwareRevision?.value ?? "—"],
     ["Battery", state.batteryPercent ? `${state.batteryPercent.value}%` : "—"],
-    ["Rear gear", state.gearRear ? String(state.gearRear.value) : "—"],
-    ["Rear cogs", state.totalRear ? String(state.totalRear.value) : "—"],
-    ["Shifts seen", String(state.shiftCount)],
+    ["Rear gear", drivetrain?.gearRear ? String(drivetrain.gearRear.value) : "—"],
+    ["Rear cogs", drivetrain?.totalRear ? String(drivetrain.totalRear.value) : "—"],
+    [
+      "MicroAdjust",
+      drivetrain?.microAdjustCurrent
+        ? `${drivetrain.microAdjustCurrent.value}` +
+          ` (${String(drivetrain.microAdjustMin?.value ?? "?")}–${String(drivetrain.microAdjustMax?.value ?? "?")})`
+        : "—",
+    ],
+    ["Shifts seen", String(drivetrain?.shiftCount ?? 0)],
     ["Frames", String(state.frameCount)],
   ];
 
@@ -674,7 +684,8 @@ function assertSimulatedPipeline(state: AxsDeviceState): void {
 
   // The load-bearing one. A gear only appears if the transport, the SRAMBond
   // AES-EAX layer and the protobuf decoder all worked.
-  const gear = state.gearRear?.value ?? null;
+  const drivetrain = state.domains.drivetrain;
+  const gear = drivetrain?.gearRear?.value ?? null;
   check(
     "encrypted gear decoded",
     gear !== null && gear >= 1 && gear <= 12,
@@ -682,8 +693,8 @@ function assertSimulatedPipeline(state: AxsDeviceState): void {
   );
   check(
     "gear came from SRAMBond",
-    state.gearRear?.decoder === "axs/srambond",
-    state.gearRear ? `decoder ${state.gearRear.decoder}` : "no decoder",
+    drivetrain?.gearRear?.decoder === "axs/srambond",
+    drivetrain?.gearRear ? `decoder ${drivetrain.gearRear.decoder}` : "no decoder",
   );
 
   console.log();

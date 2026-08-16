@@ -253,10 +253,10 @@ describe("end-to-end capture, record and replay", () => {
       const state = new StateAggregator("sim-rd-0001", "SIM GX Eagle RD", probe.registry);
       for (const frame of frames) state.ingest(frame);
 
-      const final = state.current();
-      expect(final.gearRear?.value).toBeGreaterThanOrEqual(1);
-      expect(final.totalRear?.value).toBe(12);
-      expect(final.shiftCount).toBeGreaterThan(0);
+      const drivetrain = state.current().domains.drivetrain;
+      expect(drivetrain?.gearRear?.value).toBeGreaterThanOrEqual(1);
+      expect(drivetrain?.totalRear?.value).toBe(12);
+      expect(drivetrain?.shiftCount).toBeGreaterThan(0);
     } finally {
       vi.useRealTimers();
     }

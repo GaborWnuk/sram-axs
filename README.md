@@ -379,7 +379,9 @@ component that are not decoded yet.
 
 Emit a recognised key from a decoder's `fields` — `batteryPercent`,
 `firmwareRevision`, `gearRear` — and `StateAggregator` and the dashboard pick it
-up with no further wiring.
+up with no further wiring. Universal values land at the top level; anything
+component-specific goes through a domain reducer into `state.domains`, so a
+component that is not a drivetrain never carries a gear.
 
 ## Design decisions worth knowing
 

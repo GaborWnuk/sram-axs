@@ -62,17 +62,30 @@ function replayCapture(): AxsDeviceState {
  */
 function provenance(state: AxsDeviceState): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(state)) {
-    if (value && typeof value === "object" && "decoder" in value && "confidence" in value) {
-      out[key] = `${String(value.decoder)}@${String(value.confidence)}`;
+
+  const walk = (prefix: string, source: object): void => {
+    for (const [key, value] of Object.entries(source)) {
+      if (value && typeof value === "object" && "decoder" in value && "confidence" in value) {
+        out[`${prefix}${key}`] = `${String(value.decoder)}@${String(value.confidence)}`;
+      }
     }
+  };
+
+  walk("", state);
+  // Domains carry their own provenance-tracked values, and a value quietly
+  // changing which domain it lands in is exactly the kind of refactor slip
+  // worth catching.
+  for (const [domain, value] of Object.entries(state.domains)) {
+    if (value && typeof value === "object") walk(`${domain}.`, value);
   }
+
   return out;
 }
 
 describe("characterization: replaying the RD-GX-E-B1 capture", () => {
   it("folds the capture into the same state as before", () => {
     const state = replayCapture();
+    const drivetrain = state.domains.drivetrain;
 
     expect({
       deviceId: state.deviceId,
@@ -82,11 +95,15 @@ describe("characterization: replaying the RD-GX-E-B1 capture", () => {
       firmwareRevision: state.firmwareRevision?.value ?? null,
       manufacturerName: state.manufacturerName?.value ?? null,
       batteryPercent: state.batteryPercent?.value ?? null,
-      gearRear: state.gearRear?.value ?? null,
-      gearFront: state.gearFront?.value ?? null,
-      totalRear: state.totalRear?.value ?? null,
-      totalFront: state.totalFront?.value ?? null,
-      shiftCount: state.shiftCount,
+      gearRear: drivetrain?.gearRear?.value ?? null,
+      gearFront: drivetrain?.gearFront?.value ?? null,
+      trimRear: drivetrain?.trimRear?.value ?? null,
+      totalRear: drivetrain?.totalRear?.value ?? null,
+      totalFront: drivetrain?.totalFront?.value ?? null,
+      microAdjustCurrent: drivetrain?.microAdjustCurrent?.value ?? null,
+      microAdjustMin: drivetrain?.microAdjustMin?.value ?? null,
+      microAdjustMax: drivetrain?.microAdjustMax?.value ?? null,
+      shiftCount: drivetrain?.shiftCount ?? 0,
       frameCount: state.frameCount,
       lastUpdateAt: state.lastUpdateAt,
     }).toMatchInlineSnapshot(`
@@ -100,21 +117,35 @@ describe("characterization: replaying the RD-GX-E-B1 capture", () => {
         "gearRear": 12,
         "lastUpdateAt": 1754000004000,
         "manufacturerName": null,
+        "microAdjustCurrent": 12,
+        "microAdjustMax": 23,
+        "microAdjustMin": 1,
         "modelNumber": "RD-GX-E-B1",
         "serialNumber": "1234567890",
         "shiftCount": 11,
         "totalFront": null,
         "totalRear": null,
+        "trimRear": 12,
       }
     `);
+  });
+
+  it("reports only the domains the component actually has", () => {
+    // A derailleur has a drivetrain and nothing else. The old flat record gave
+    // every device every field; this is the property that replaced it.
+    expect(Object.keys(replayCapture().domains)).toEqual(["drivetrain"]);
   });
 
   it("keeps every value coming from the decoder it came from before", () => {
     expect(provenance(replayCapture())).toMatchInlineSnapshot(`
       {
+        "drivetrain.gearFront": "axs/srambond@0.99",
+        "drivetrain.gearRear": "axs/srambond@0.99",
+        "drivetrain.microAdjustCurrent": "axs/microadjust@0.92",
+        "drivetrain.microAdjustMax": "axs/microadjust@0.92",
+        "drivetrain.microAdjustMin": "axs/microadjust@0.92",
+        "drivetrain.trimRear": "axs/srambond@0.99",
         "firmwareRevision": "axs/device-record@0.95",
-        "gearFront": "axs/srambond@0.99",
-        "gearRear": "axs/srambond@0.99",
         "modelNumber": "axs/model@0.95",
         "serialNumber": "axs/serial@0.97",
       }
@@ -125,11 +156,11 @@ describe("characterization: replaying the RD-GX-E-B1 capture", () => {
     // The capture walks 1→12, so eleven transitions. Stated as an arithmetic
     // relation rather than a literal so that extending the corpus updates the
     // expectation instead of breaking it.
-    expect(replayCapture().shiftCount).toBe(RD_GX_E_B1_SWEEP.length - 1);
+    expect(replayCapture().domains.drivetrain?.shiftCount).toBe(RD_GX_E_B1_SWEEP.length - 1);
   });
 
   it("ends on the last gear in the capture", () => {
     const last = RD_GX_E_B1_SWEEP[RD_GX_E_B1_SWEEP.length - 1];
-    expect(replayCapture().gearRear?.value).toBe(last?.[0]);
+    expect(replayCapture().domains.drivetrain?.gearRear?.value).toBe(last?.[0]);
   });
 });

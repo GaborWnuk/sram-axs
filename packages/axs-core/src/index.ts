@@ -216,9 +216,20 @@ export {
 } from "./recorder.js";
 export type { SessionDocument, SerializedFrame } from "./recorder.js";
 
-// State aggregation
-export { StateAggregator } from "./state.js";
-export type { AxsDeviceState, ValueSource } from "./state.js";
+// State aggregation. The aggregator folds identity and battery; anything
+// component-specific is contributed by a domain reducer.
+export { StateAggregator, DEFAULT_DOMAIN_REDUCERS } from "./state.js";
+export type { AxsDeviceState, AxsDomains, ValueSource } from "./state.js";
+export { defineDomain } from "./domain.js";
+export type {
+  AnyDomainReducer,
+  DomainContext,
+  DomainEvents,
+  DomainReducer,
+  StoredValue,
+} from "./domain.js";
+export { drivetrainDomain } from "./axs/drivetrain-domain.js";
+export type { DrivetrainDomain } from "./axs/drivetrain-domain.js";
 
 // Utilities
 export { Emitter } from "./emitter.js";

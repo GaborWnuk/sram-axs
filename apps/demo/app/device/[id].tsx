@@ -70,7 +70,10 @@ function StateTab() {
 
   if (!deviceState) return <EmptyState title="Not connected" />;
 
-  const gear = deviceState.gearRear;
+  // Drivetrain values live under their domain, and are absent entirely on a
+  // component that is not a drivetrain — a dropper post gets no gear card.
+  const drivetrain = deviceState.domains.drivetrain;
+  const gear = drivetrain?.gearRear ?? null;
 
   return (
     <ScrollView contentContainerStyle={styles.tabContent}>
@@ -92,23 +95,26 @@ function StateTab() {
         <ProvenanceRow label="Voltage" source={deviceState.batteryVolts} />
       </Card>
 
-      <Card>
-        <SectionTitle>Drivetrain</SectionTitle>
-        {liveGear !== null ? (
-          <Row label="Rear gear" value={String(liveGear)} monospace />
-        ) : (
-          <ProvenanceRow label="Rear gear" source={gear} />
-        )}
-        <ProvenanceRow label="Front gear" source={deviceState.gearFront} />
-        <ProvenanceRow label="Rear cogs" source={deviceState.totalRear} />
-        <Row label="Shifts observed" value={String(deviceState.shiftCount)} monospace />
-        {gear && gear.confidence < 0.8 ? (
-          <Text style={[styles.caveat, { color: theme.warning }]}>
-            Gear is a speculative decoding ({gear.decoder}). The AXS BLE protocol is
-            undocumented — confirm against the physical cog before trusting this.
-          </Text>
-        ) : null}
-      </Card>
+      {drivetrain ? (
+        <Card>
+          <SectionTitle>Drivetrain</SectionTitle>
+          {liveGear !== null ? (
+            <Row label="Rear gear" value={String(liveGear)} monospace />
+          ) : (
+            <ProvenanceRow label="Rear gear" source={gear} />
+          )}
+          <ProvenanceRow label="Front gear" source={drivetrain.gearFront} />
+          <ProvenanceRow label="Rear cogs" source={drivetrain.totalRear} />
+          <ProvenanceRow label="MicroAdjust" source={drivetrain.microAdjustCurrent} />
+          <Row label="Shifts observed" value={String(drivetrain.shiftCount)} monospace />
+          {gear && gear.confidence < 0.8 ? (
+            <Text style={[styles.caveat, { color: theme.warning }]}>
+              Gear is a speculative decoding ({gear.decoder}). The AXS BLE protocol is
+              undocumented — confirm against the physical cog before trusting this.
+            </Text>
+          ) : null}
+        </Card>
+      ) : null}
 
       <Card>
         <SectionTitle>Capture</SectionTitle>
@@ -495,9 +501,12 @@ export default function DeviceScreen() {
       {deviceState && tab !== "log" ? (
         <View style={[styles.gearStrip, { backgroundColor: theme.surfaceAlt }]}>
           <Text style={[styles.gearStripText, { color: theme.textDim }]}>
-            gear {liveGear ?? deviceState.gearRear?.value ?? "—"}
-            {deviceState.totalRear ? `/${deviceState.totalRear.value}` : ""} · shifts{" "}
-            {deviceState.shiftCount} · frames {deviceState.frameCount}
+            gear {liveGear ?? deviceState.domains.drivetrain?.gearRear?.value ?? "—"}
+            {deviceState.domains.drivetrain?.totalRear
+              ? `/${deviceState.domains.drivetrain.totalRear.value}`
+              : ""}{" "}
+            · shifts {deviceState.domains.drivetrain?.shiftCount ?? 0} · frames{" "}
+            {deviceState.frameCount}
           </Text>
         </View>
       ) : null}
