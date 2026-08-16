@@ -241,6 +241,19 @@ no transport change.
 
 **Proof:** each new simulator is itself the test fixture for its family.
 
+**Fix this first, though — the simulator is more forgiving than hardware.**
+`simulatedDerailleur` sets `notifyGenerator` on the live-state characteristic to
+emit a full `drivetrain_status` frame. Real hardware notifies a single `0xff`
+doorbell byte and serves the frame only on a *read*.
+
+That gap points the wrong way. A consumer that subscribes instead of polling
+works perfectly against the simulator and produces a gear that never appears on
+a bike — which is exactly the failure that cost a debugging session in a garage,
+and the one thing the simulator should have caught at a desk. Making the
+simulated notification a bare `0xff` would turn the most expensive bug found so
+far into a hardware-free test, and is a precondition for trusting any new
+component simulator built on the same pattern.
+
 ### Move G — bike-level aggregate
 
 New composition layer over several `DeviceSession`s.
