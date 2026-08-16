@@ -1,12 +1,11 @@
 # Codecov configuration.
 #
-# The one thing that genuinely has to be here is `fixes`. Coverage is produced
-# by vitest running inside packages/axs-core, so lcov records paths relative to
-# that directory ("src/bytes.ts"). Codecov resolves paths against the repository
-# root, where "src/" does not exist, and silently reports every file as
-# unmatched -- a green upload with no coverage attached to any line.
-fixes:
-  - "::packages/axs-core/"
+# Note there is deliberately no `fixes:` entry. lcov records paths relative to
+# packages/axs-core ("src/bytes.ts"), which looks like it needs a prefix, but
+# codecov-action already resolves the report against the repository root before
+# upload. Adding a path fix on top produced doubled paths of the form
+# packages/axs-core/packages/axs-core/src/bytes.ts, which match no file in the
+# tree.
 
 coverage:
   status:
