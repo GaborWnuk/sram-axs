@@ -10,6 +10,9 @@ should end up before that assumption becomes load-bearing.
 > exist yet, and is deliberately excluded from the documentation type-check that
 > covers `README.md` and the package READMEs.
 
+For how each move gets sequenced and proven — blast radius, what validates it,
+and what needs hardware — see [REFACTORING.md](REFACTORING.md).
+
 ---
 
 ## The rule
