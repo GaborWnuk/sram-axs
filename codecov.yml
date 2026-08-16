@@ -1,0 +1,40 @@
+# Codecov configuration.
+#
+# The one thing that genuinely has to be here is `fixes`. Coverage is produced
+# by vitest running inside packages/axs-core, so lcov records paths relative to
+# that directory ("src/bytes.ts"). Codecov resolves paths against the repository
+# root, where "src/" does not exist, and silently reports every file as
+# unmatched -- a green upload with no coverage attached to any line.
+fixes:
+  - "::packages/axs-core/"
+
+coverage:
+  status:
+    project:
+      default:
+        # Measure against the base commit rather than a fixed number, so the
+        # question is "did this change make things worse", not "did we hit an
+        # arbitrary bar".
+        target: auto
+        # Coverage moves a little with unrelated refactors; don't fail on noise.
+        threshold: 1%
+    patch:
+      default:
+        # New code should be tested, but a partial patch should not block a
+        # release over a line or two.
+        target: 80%
+        threshold: 5%
+
+comment:
+  layout: "reach, diff, files"
+  # Don't comment on pull requests that do not move coverage at all.
+  require_changes: true
+
+ignore:
+  # Test files and the barrel re-export are already excluded by the vitest
+  # config; repeated here so the intent survives a change to either side.
+  - "packages/axs-core/src/**/*.test.ts"
+  - "packages/axs-core/src/index.ts"
+  # The CLI and the Expo app are exercised on hardware, not in unit tests;
+  # counting them would report a misleading number for the library.
+  - "apps/**"
