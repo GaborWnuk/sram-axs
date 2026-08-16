@@ -92,6 +92,19 @@ export type {
 // AXS drivetrain live state (decrypted) + SRAMBond decryption
 export { decodeDrivetrainStatus, decodeDrivetrainConfig } from "./axs/drivetrain.js";
 export type { DrivetrainStatus, DrivetrainConfig } from "./axs/drivetrain.js";
+
+// Message routing for the encrypted channel. The channel carries several
+// messages distinguished by protobuf field number; register a profile to teach
+// the library one it does not know yet.
+export {
+  AXS_MESSAGES,
+  defineMessage,
+  routeMessage,
+  unmappedMessage,
+  drivetrainStatusMessage,
+  drivetrainConfigMessage,
+} from "./axs/messages.js";
+export type { AnyMessageProfile, MessageProfile, RoutedMessage } from "./axs/messages.js";
 export {
   createSrambondDecoder,
   decodeSrambondState,

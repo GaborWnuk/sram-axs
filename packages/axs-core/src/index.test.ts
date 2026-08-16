@@ -37,6 +37,7 @@ import * as api from "./index.js";
  */
 const RUNTIME_EXPORTS = [
   "AXS_DECODERS",
+  "AXS_MESSAGES",
   "AXS_MODELS",
   "AXS_USAGE_RECORD_OFFSETS",
   "AxsProbe",
@@ -91,9 +92,12 @@ const RUNTIME_EXPORTS = [
   "decodeUsageRecord",
   "decryptLiveStateFrame",
   "decryptTransportedKey",
+  "defineMessage",
   "describeUuid",
   "deserializeFrame",
   "disStringDecoder",
+  "drivetrainConfigMessage",
+  "drivetrainStatusMessage",
   "eaxDecrypt",
   "eaxEncrypt",
   "flattenProtobuf",
@@ -115,6 +119,7 @@ const RUNTIME_EXPORTS = [
   "protobufDecoder",
   "publicKey",
   "replaySession",
+  "routeMessage",
   "serializeFrame",
   "shannonEntropy",
   "sharedSecret",
@@ -131,6 +136,7 @@ const RUNTIME_EXPORTS = [
   "u24le",
   "u32be",
   "u32le",
+  "unmappedMessage",
   "uuidEquals",
   "vendorCharacteristicDecoder",
   "watchLiveState",
@@ -145,6 +151,7 @@ const RUNTIME_EXPORTS = [
  */
 export type PublicTypes = {
   AnnotatedFrame: api.AnnotatedFrame;
+  AnyMessageProfile: api.AnyMessageProfile;
   AxsDeviceKind: api.AxsDeviceKind;
   AxsDeviceState: api.AxsDeviceState;
   AxsFirmwareVersion: api.AxsFirmwareVersion;
@@ -181,11 +188,13 @@ export type PublicTypes = {
   LogEntry: api.LogEntry;
   LogLevel: api.LogLevel;
   ManufacturerData: api.ManufacturerData;
+  MessageProfile: api.MessageProfile<number>;
   ProbeOptions: api.ProbeOptions;
   ProtobufField: api.ProtobufField;
   ProtobufMessage: api.ProtobufMessage;
   RawFrame: api.RawFrame;
   ReconnectPolicy: api.ReconnectPolicy;
+  RoutedMessage: api.RoutedMessage;
   ScanResult: api.ScanResult;
   SerializedFrame: api.SerializedFrame;
   SessionDocument: api.SessionDocument;

@@ -30,14 +30,15 @@
  * TypeScript.
  */
 
-import { toHex } from "../bytes.js";
 import { eaxDecrypt } from "../crypto/aes-eax.js";
 import type { DecodedResult, Decoder, RawFrame } from "../frame.js";
+import { decodeDrivetrainStatus, type DrivetrainStatus } from "./drivetrain.js";
 import {
-  decodeDrivetrainConfig,
-  decodeDrivetrainStatus,
-  type DrivetrainStatus,
-} from "./drivetrain.js";
+  AXS_MESSAGES,
+  routeMessage,
+  unmappedMessage,
+  type AnyMessageProfile,
+} from "./messages.js";
 
 /** Characteristic that serves the encrypted drivetrain live-state frame. */
 export const LIVE_STATE_CHARACTERISTIC = "d905000b-90aa-4c7c-b036-1e01fb8eb7ee";
@@ -84,8 +85,16 @@ export function decodeSrambondState(key: Uint8Array, frame: Uint8Array): Drivetr
  *
  * Frames that do not authenticate under this key are declined, so registering a
  * decoder for the wrong component is harmless.
+ *
+ * This function owns exactly one thing: peeling off the AES-EAX layer. What the
+ * plaintext underneath *means* is decided by the message profiles in
+ * `messages.ts`, so teaching the library to read a new component's live state
+ * needs no change here. Pass `profiles` to narrow or extend that vocabulary.
  */
-export function createSrambondDecoder(key: Uint8Array): Decoder {
+export function createSrambondDecoder(
+  key: Uint8Array,
+  profiles: readonly AnyMessageProfile[] = AXS_MESSAGES,
+): Decoder {
   return {
     name: "axs/srambond",
     decode(frame: RawFrame): DecodedResult | null {
@@ -99,39 +108,15 @@ export function createSrambondDecoder(key: Uint8Array): Decoder {
         return null;
       }
 
-      // The same encrypted channel carries several messages. Field numbers tell
-      // them apart: 20-22 is drivetrain_status, 23-25 is drivetrain_config.
-      const status = decodeDrivetrainStatus(plaintext);
-      if (status.gearRear !== undefined) {
-        const fields: Record<string, unknown> = { gearRear: status.gearRear };
-        if (status.gearFront !== undefined) fields.gearFront = status.gearFront;
-        if (status.trimRear !== undefined) fields.trimRear = status.trimRear;
-        return {
-          decoder: this.name,
-          confidence: 0.99,
-          summary: `gear ${status.gearRear}`,
-          fields,
-        };
-      }
+      // Authenticated. Whatever it turns out to be, it is a real message from
+      // the component — so an unrecognised one is reported rather than dropped.
+      const routed = routeMessage(plaintext, profiles) ?? unmappedMessage(plaintext);
 
-      const config = decodeDrivetrainConfig(plaintext);
-      if (config.totalRear !== undefined) {
-        const fields: Record<string, unknown> = { totalRear: config.totalRear };
-        if (config.totalFront !== undefined) fields.totalFront = config.totalFront;
-        return {
-          decoder: this.name,
-          confidence: 0.99,
-          summary: `drivetrain: ${config.totalRear} rear cogs`,
-          fields,
-        };
-      }
-
-      // Authenticated, but not a modelled message — still worth surfacing.
       return {
         decoder: this.name,
-        confidence: 0.9,
-        summary: `decrypted ${plaintext.length}B (unmapped message)`,
-        fields: { decryptedHex: toHex(plaintext, "") },
+        confidence: routed.confidence,
+        summary: routed.summary,
+        fields: routed.fields,
       };
     },
   };
