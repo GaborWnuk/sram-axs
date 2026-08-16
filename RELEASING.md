@@ -34,11 +34,30 @@ needs no secrets.
 
 4. **Publish.** The package is scoped, and scoped packages default to
    restricted; `publishConfig.access` in `package.json` already forces public,
-   so no flag is needed.
+   so no access flag is needed. The account has 2FA enforced for writes, so a
+   one-time code is:
 
    ```sh
-   npm publish --workspace=@gaborwnuk/axs-core
+   npm publish --workspace=@gaborwnuk/axs-core --otp=123456
    ```
+
+   Without `--otp` this fails with:
+
+   ```
+   npm error code E403
+   npm error 403 Two-factor authentication or granular access token with
+   npm error 403 bypass 2fa enabled is required to publish packages.
+   ```
+
+   Being logged in is not sufficient — `npm whoami` succeeding only proves the
+   stored credential identifies you, not that it may publish. If `--otp` is
+   still rejected, the stored token is a granular one without publish rights;
+   re-authenticate with `npm logout && npm login` and retry.
+
+   The alternative npm suggests — a granular token with *bypass 2FA* — is
+   deliberately not used here: it is a standing publish credential on disk, and
+   it expires every 90 days, which is what ruled out automated publishing in the
+   first place.
 
    **The `--workspace` flag is required.** Running plain `npm publish` from the
    repository root targets the root package, `sram-axs-workspace`, which is
