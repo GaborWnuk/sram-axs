@@ -28,6 +28,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Codecov compares against the parent commit to work out patch
+          # coverage. The default shallow clone fetches only the tip, leaving it
+          # with nothing to diff against.
+          fetch-depth: 2
 
       - uses: actions/setup-node@v4
         with:
