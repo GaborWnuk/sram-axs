@@ -54,6 +54,7 @@ const RUNTIME_EXPORTS = [
   "FakeTransport",
   "GearWatcher",
   "LIVE_STATE_CHARACTERISTIC",
+  "LiveStateWatcher",
   "SIMULATOR_DEVICE_KEY",
   "SRAMBOND_FINALIZE",
   "SRAMBOND_GENERATOR",
@@ -185,6 +186,10 @@ export type PublicTypes = {
   Identification: api.Identification;
   IntegerCandidate: api.IntegerCandidate;
   Listener: api.Listener<number>;
+  LiveReading: api.LiveReading<{ a: 1 }>;
+  LiveStateStatus: api.LiveStateStatus;
+  LiveStateWatcherEvents: api.LiveStateWatcherEvents<{ a: 1 }>;
+  LiveStateWatcherOptions: api.LiveStateWatcherOptions<{ a: 1 }>;
   LogEntry: api.LogEntry;
   LogLevel: api.LogLevel;
   ManufacturerData: api.ManufacturerData;

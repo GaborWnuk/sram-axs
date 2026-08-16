@@ -114,13 +114,21 @@ export {
   SRAMBOND_TAG_LENGTH,
 } from "./axs/srambond.js";
 
-// Self-healing live gear reading (auto-reconnect)
-export { GearWatcher, watchLiveState } from "./axs/gear-watcher.js";
+// Self-healing live-state reading (auto-reconnect). The generic watcher is the
+// machinery; GearWatcher is it with the drivetrain decoder wired in.
+export { LiveStateWatcher, watchLiveState } from "./axs/live-state-watcher.js";
+export type {
+  LiveReading,
+  LiveStateStatus,
+  LiveStateWatcherEvents,
+  LiveStateWatcherOptions,
+  WatchLiveStateOptions,
+} from "./axs/live-state-watcher.js";
+export { GearWatcher } from "./axs/gear-watcher.js";
 export type {
   GearWatcherOptions,
   GearWatcherStatus,
   GearReading,
-  WatchLiveStateOptions,
 } from "./axs/gear-watcher.js";
 export {
   DEFAULT_RECONNECT_POLICY,

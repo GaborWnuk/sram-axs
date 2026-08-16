@@ -13,7 +13,8 @@ import {
   SIMULATOR_DEVICE_KEY,
   simulatedDerailleur,
 } from "../testing/fake-transport.js";
-import { GearWatcher, watchLiveState, type GearWatcherStatus } from "./gear-watcher.js";
+import { GearWatcher, type GearWatcherStatus } from "./gear-watcher.js";
+import { watchLiveState } from "./live-state-watcher.js";
 
 /** Let queued promise callbacks run without advancing the fake clock. */
 const flush = () => vi.advanceTimersByTimeAsync(0);
