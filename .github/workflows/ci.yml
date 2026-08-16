@@ -1,0 +1,73 @@
+# Continuous integration: the gate every push and pull request has to pass.
+#
+# Deliberately mirrors `npm run check` (lint, typecheck, test, build) so that a
+# green tick here means the same thing as a clean local run, with coverage
+# uploaded on top.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Allows a re-run from the Actions tab without pushing an empty commit.
+  workflow_dispatch:
+
+# A new push to the same branch makes the previous run irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # `npm ci` needs the lockfile to be in sync with every workspace manifest,
+      # which is exactly the drift worth catching here.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test with coverage
+        run: npm run test:coverage --workspace=@gaborwnuk/axs-core
+
+      - name: Build
+        run: npm run build
+
+      # The package is published from this build, so a tarball that does not
+      # resolve is worth catching now rather than at release time.
+      - name: Verify the published entry points resolve
+        run: |
+          node -e "const m = require('./packages/axs-core/dist/index.cjs');
+                   if (typeof m.GearWatcher !== 'function') throw new Error('CJS entry point is broken');
+                   console.log('CJS OK');"
+          node --input-type=module -e "import('./packages/axs-core/dist/index.js').then(m => {
+                     if (typeof m.GearWatcher !== 'function') throw new Error('ESM entry point is broken');
+                     console.log('ESM OK');
+                   });"
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: packages/axs-core/coverage/lcov.info
+          flags: axs-core
+          token: ${{ secrets.CODECOV_TOKEN }}
+          # A coverage upload hiccup should not fail an otherwise good build.
+          fail_ci_if_error: false

@@ -52,3 +52,7 @@ yarn-error.log*
 .env
 .env.local
 .env.*.local
+
+# Test coverage output
+coverage/
+*.lcov
