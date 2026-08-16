@@ -161,7 +161,7 @@ register("8ec90003-f315-4f60-9fb8-838830daea50", {
 
 // --- SRAM AXS vendor UUIDs -------------------------------------------------
 //
-// Observed on a real component (advertised name `SRAM 1503603158`) during a
+// Observed on a real component (advertised name `SRAM 1234567890`) during a
 // bench capture on 2026-08-01. SRAM uses a consistent vendor base:
 //
 //     d905XXXX-90aa-4c7c-b036-1e01fb8eb7ee
@@ -186,7 +186,7 @@ register("fe51", {
 register(sramUuid("fe54"), {
   name: "Device Serial Number",
   category: "vendor",
-  note: "CONFIRMED: little-endian uint32. Matches the number in the advertised name (e.g. `SRAM 1503603158`).",
+  note: "CONFIRMED: little-endian uint32. Matches the number in the advertised name (e.g. `SRAM 1234567890`).",
 });
 register(sramUuid("fe56"), {
   name: "Model / Product ID",

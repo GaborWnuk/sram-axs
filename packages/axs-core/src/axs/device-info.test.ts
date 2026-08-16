@@ -14,7 +14,7 @@
  * Ground truth (AXS app, 2026-08-01, bike "Spectral CF8"):
  *   Component     GX RD
  *   Model         RD-GX-E-B1
- *   Serial        1503603158
+ *   Serial        1234567890
  *   Firmware      2.55.6
  *   MicroAdjust   min 1, current 12, max 23
  */
@@ -30,16 +30,20 @@ import {
   decodeMicroAdjust,
 } from "./device-info.js";
 
-/** Verbatim reads from serial 1503603158. */
+/**
+ * Real captured reads, with the component's serial replaced by the placeholder
+ * 1234567890 throughout — in the decoded value and in the bytes that encode it.
+ * Every other byte is as captured.
+ */
 const CAPTURE = {
-  serial: fromHex("d6 29 9f 59"),
+  serial: fromHex("d2 02 96 49"),
   model: fromHex("33 04"),
   deviceRecord: fromHex(
     "02 00 00 00 00 06 37 02 00 00 02 01 54 01 00 00 00 01 01 06 40 28 05 00 " +
       "67 33 31 33 63 61 61 30 65 64 36 2e 64 69 72 00",
   ),
   microAdjust: fromHex("b8 01 01 c0 01 0c c8 01 17"),
-  identityProtobuf: fromHex("ca 01 0a b0 01 d6 d3 fc cc 05 b8 01 01"),
+  identityProtobuf: fromHex("ca 01 0a b0 01 d2 85 d8 cc 04 b8 01 01"),
 };
 
 const SRAM_BASE = "-90aa-4c7c-b036-1e01fb8eb7ee";
@@ -64,8 +68,8 @@ describe("serial number (d905fe54)", () => {
     const best = registry.best(frame(`d905fe54${SRAM_BASE}`, CAPTURE.serial))!;
 
     expect(best.decoder).toBe("axs/serial");
-    expect(best.fields.axsSerial).toBe(1503603158);
-    expect(best.fields.serialNumber).toBe("1503603158");
+    expect(best.fields.axsSerial).toBe(1234567890);
+    expect(best.fields.serialNumber).toBe("1234567890");
   });
 
   it("agrees with the serial embedded in the d905fff2 protobuf", () => {
@@ -74,7 +78,7 @@ describe("serial number (d905fe54)", () => {
     const best = registry.best(frame(`d905fff2${SRAM_BASE}`, CAPTURE.identityProtobuf))!;
 
     expect(best.decoder).toBe("protobuf/structure");
-    expect((best.fields.values as Record<string, string>)["25.22"]).toBe("1503603158");
+    expect((best.fields.values as Record<string, string>)["25.22"]).toBe("1234567890");
   });
 });
 

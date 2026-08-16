@@ -11,14 +11,14 @@
  *
  * ## Why this is here
  *
- * Bench capture from a real AXS component (`SRAM 1503603158`) showed that
+ * Bench capture from a real AXS component showed that
  * several vendor characteristics carry **protobuf-encoded** payloads. Two
  * independent confirmations:
  *
- *   - `d905fe54` reads `d6 29 9f 59` — LE uint32 `1503603158`, exactly the
- *     number in the advertised device name `SRAM 1503603158`.
- *   - `d905fff2` reads `ca 01 0a b0 01 d6 d3 fc cc 05 b8 01 01`, which parses
- *     as protobuf field 25 (nested) containing field 22 = `1503603158` — the
+ *   - `d905fe54` reads `d2 02 96 49` — LE uint32 `1234567890`, exactly the
+ *     number in the advertised device name `SRAM 1234567890`.
+ *   - `d905fff2` reads `ca 01 0a b0 01 d2 85 d8 cc 04 b8 01 01`, which parses
+ *     as protobuf field 25 (nested) containing field 22 = `1234567890` — the
  *     same serial, arrived at by a completely different route.
  *
  * A coincidence that survives two independent derivations is not a coincidence.
@@ -213,7 +213,7 @@ export function formatProtobuf(fields: ProtobufField[], indent = 0): string {
     .join("\n");
 }
 
-/** Flatten to `path -> value` pairs, e.g. `25.22 -> 1503603158`. */
+/** Flatten to `path -> value` pairs, e.g. `25.22 -> 1234567890`. */
 export function flattenProtobuf(
   fields: ProtobufField[],
   prefix = "",

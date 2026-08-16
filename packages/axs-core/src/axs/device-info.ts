@@ -10,7 +10,7 @@
  * Confirmed AXS vendor decoders.
  *
  * Everything here was verified on a real SRAM GX Eagle Transmission
- * (`RD-GX-E-B1`, serial 1503603158, firmware 2.55.6) by capturing the raw GATT
+ * (`RD-GX-E-B1`, firmware 2.55.6) by capturing the raw GATT
  * reads and cross-checking each value against what the official SRAM AXS app
  * displayed for the same component at the same moment.
  *
@@ -85,7 +85,7 @@ export function axsModelKind(modelId: number): AxsDeviceKind {
  * Device serial number.
  *
  * CONFIRMED: little-endian uint32. Independently corroborated three ways — the
- * AXS app's "Serial: 1503603158", the advertised local name `SRAM 1503603158`,
+ * AXS app's "Serial: 1234567890", the advertised local name `SRAM 1234567890`,
  * and a protobuf copy in `d905fff2` field 25.22.
  */
 export const axsSerialDecoder: Decoder = {

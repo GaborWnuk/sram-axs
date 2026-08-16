@@ -7,7 +7,7 @@ exact reads and writes — that lets a client read gear with no cloud and no
 account.
 
 Everything here is reproduced byte-for-byte by the code in this repo
-(`@axs/core`) and was verified against real hardware under controlled conditions,
+(`@gaborwnuk/axs-core`) and was verified against real hardware under controlled conditions,
 including a run with the device offline (airplane mode) and all local state
 wiped, to prove no part of it depends on SRAM's servers.
 
@@ -24,12 +24,17 @@ What differs between components is *which* messages they serve. A seatpost has n
 crypto are the same everywhere.
 
 **Verified on:** SRAM GX Eagle Transmission **`RD-GX-E-B1`** (T-Type, UDH
-direct-mount, serial `1503603158`, firmware `2.55.6`) and an **AXS Controller**
+direct-mount, firmware `2.55.6`) and an **AXS Controller**
 on the same bike — the only AXS components the author owns. Everything described
 here is confirmed on that hardware; the platform-level behaviour is expected to
 hold across the range, and support for other components will be confirmed as
 they become available.
 
+> **On serial numbers.** Every serial in this document and in the test
+> fixtures is the placeholder `1234567890`, substituted for the author's own
+> component — in the decoded value *and* in the bytes that encode it, so the
+> two stay consistent. Structure, offsets and every other byte are exactly as
+> captured; only the identifier differs.
 ---
 
 ## At a glance
@@ -106,7 +111,7 @@ Two facts fall straight out of this and drive everything:
 ### 2.1 Identifying a component
 
 - Advertises under Bluetooth SIG company identifier **`0x0933`** (SRAM).
-- Advertised local name is **`SRAM <serial>`** — e.g. `SRAM 1503603158` — the
+- Advertised local name is **`SRAM <serial>`** — e.g. `SRAM 1234567890` — the
   same serial exposed inside the GATT tree.
 
 ### 2.2 Service layout
@@ -164,7 +169,7 @@ Readable directly, no pairing, every value cross-checked against the app.
 
 | Value | Characteristic | Encoding | Verified against |
 |---|---|---|---|
-| **Serial** | `d905fe54` | little-endian u32 → `1503603158` | App "Serial", advertised name, a protobuf copy in `d905fff2` |
+| **Serial** | `d905fe54` | little-endian u32 → `1234567890` | App "Serial", advertised name, a protobuf copy in `d905fff2` |
 | **Model / product ID** | `d905fe56` | little-endian u16 → `1075` | App "Model: RD-GX-E-B1" |
 | **Firmware + build ID** | `d905fe58` | version triplet at offset 5, **patch-first** (`06 37 02` → `2.55.6`); ASCII git build id at the tail (`g313caa0ed6.dir`) | App "Firmware Version: 2.55.6" |
 | **MicroAdjust** | `d905000a` | protobuf: min / current / max → `1 / 12 / 23` | App MicroAdjust screen |
@@ -310,7 +315,7 @@ The offline create-bond captured for this document runs on **v1** (`d905ee52`).
 ## 6. The offline create-bond — the full handshake
 
 Verified end to end with the component offline (airplane mode) and all local key
-state wiped. Every value here is reproduced by `@axs/core`
+state wiped. Every value here is reproduced by `@gaborwnuk/axs-core`
 (`createBond` in `axs/srambond-bond.ts`). The whole exchange is on `d905ee52`:
 
 ```mermaid
@@ -335,7 +340,7 @@ Notes:
 
 - **Writes touch the SRAMBond service only** (`d905ee52`) — never the Nordic
   buttonless-DFU control point, which would reboot the component into its
-  bootloader. `@axs/core`'s bond writes exactly these four values and nothing
+  bootloader. `@gaborwnuk/axs-core`'s bond writes exactly these four values and nothing
   else.
 - **The key is minted by the device.** The 48-byte blob decrypts (with the DH
   shared secret) to a fresh 16-byte key the component generated for this bond.
@@ -409,7 +414,7 @@ notification on every shift; re-read and re-decrypt to track gear at roughly 4 H
 
 ## 7. What this library does
 
-`@axs/core` (pure TypeScript, no native deps, Hermes-safe) implements the whole
+`@gaborwnuk/axs-core` (pure TypeScript, no native deps, Hermes-safe) implements the whole
 chain, unit-tested against real captured data:
 
 - **AES-EAX** (`crypto/aes-eax.ts`) — validated against FIPS-197, NIST SP 800-38B
