@@ -39,7 +39,7 @@ import {
   type DiscoveredDevice,
   type LogEntry,
   type RawFrame,
-} from "@axs/core";
+} from "@gaborwnuk/axs-core";
 
 import { requestBlePermissions } from "./ble/permissions";
 import { PlxTransport } from "./ble/plx-transport";

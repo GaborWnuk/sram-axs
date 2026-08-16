@@ -25,7 +25,7 @@ import {
   toHex,
   type RawFrame,
   type ValueSource,
-} from "@axs/core";
+} from "@gaborwnuk/axs-core";
 
 import { LiveGear } from "../../src/components/live-gear";
 import { Badge, Button, Card, EmptyState, Row, SectionTitle } from "../../src/components/ui";

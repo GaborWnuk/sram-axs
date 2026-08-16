@@ -20,7 +20,7 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, "node_modules"),
 ];
 
-// @axs/core ships ESM with "exports"; make sure Metro honours it.
+// @gaborwnuk/axs-core ships ESM with "exports"; make sure Metro honours it.
 config.resolver.unstable_enablePackageExports = true;
 
 module.exports = config;

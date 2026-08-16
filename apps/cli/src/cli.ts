@@ -39,7 +39,7 @@ import {
   uuidEquals,
   type BleTransport,
   type DiscoveredDevice,
-} from "@axs/core";
+} from "@gaborwnuk/axs-core";
 
 import { NobleTransport } from "./noble-transport.js";
 
@@ -151,7 +151,7 @@ async function commandScan(transport: BleTransport, flags: Record<string, string
   if (sram.length > 0) {
     console.log(c.dim("\nProbe one with:"));
     for (const device of sram) {
-      console.log(c.cyan(`  npm run axs -w @axs/cli -- probe ${device.result.id}`));
+      console.log(c.cyan(`  npm run axs -w @gaborwnuk/axs-cli -- probe ${device.result.id}`));
     }
   } else {
     console.log(
@@ -272,7 +272,7 @@ async function commandProbe(
   if (outPath) {
     writeFileSync(outPath, recorder.toJSON(true), "utf8");
     console.log(c.green(`\nCapture written to ${outPath} (${recorder.frameCount} frames)`));
-    console.log(c.dim(`Analyse it later with:  npm run axs -w @axs/cli -- analyze ${outPath}`));
+    console.log(c.dim(`Analyse it later with:  npm run axs -w @gaborwnuk/axs-cli -- analyze ${outPath}`));
   } else if (recorder.frameCount > 0) {
     console.log(
       c.yellow(`\n${recorder.frameCount} frames captured but not saved. Re-run with --out capture.json`),

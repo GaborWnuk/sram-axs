@@ -22,7 +22,7 @@ import { useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { toHex, type DiscoveredDevice } from "@axs/core";
+import { toHex, type DiscoveredDevice } from "@gaborwnuk/axs-core";
 
 import { Badge, Button, Card, EmptyState, SectionTitle } from "../src/components/ui";
 import { useProbe } from "../src/probe-context";

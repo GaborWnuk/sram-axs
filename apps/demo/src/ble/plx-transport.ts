@@ -36,7 +36,7 @@ import {
   type GattService,
   type ScanResult,
   type TransportUnsubscribe,
-} from "@axs/core";
+} from "@gaborwnuk/axs-core";
 
 /** Convert ble-plx's `{ [id]: base64 }` service-data map into bytes. */
 function decodeServiceData(

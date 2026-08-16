@@ -1,10 +1,10 @@
 {
-  "name": "@axs/demo",
+  "name": "@gaborwnuk/axs-demo",
   "version": "0.1.0",
   "private": true,
   "main": "expo-router/entry",
   "dependencies": {
-    "@axs/core": "*",
+    "@gaborwnuk/axs-core": "*",
     "expo": "~57.0.9",
     "expo-constants": "~57.0.8",
     "expo-crypto": "~57.0.1",

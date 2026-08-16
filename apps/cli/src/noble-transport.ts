@@ -32,7 +32,7 @@ import {
   type GattService,
   type ScanResult,
   type TransportUnsubscribe,
-} from "@axs/core";
+} from "@gaborwnuk/axs-core";
 
 /** Copy a Node Buffer into a plain Uint8Array so nothing downstream sees Buffer. */
 function toBytes(buffer: Buffer | null | undefined): Uint8Array {

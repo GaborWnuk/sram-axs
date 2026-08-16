@@ -7,7 +7,7 @@
  */
 
 /**
- * @axs/core — reconnaissance and decoding for SRAM AXS components.
+ * @gaborwnuk/axs-core — reconnaissance and decoding for SRAM AXS components.
  *
  * See README.md for the workflow. Short version:
  *

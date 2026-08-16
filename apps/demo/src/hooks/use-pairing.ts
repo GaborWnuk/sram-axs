@@ -21,7 +21,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import * as Crypto from "expo-crypto";
-import { createBond, type BleTransport, type ConnectedPeripheral } from "@axs/core";
+import { createBond, type BleTransport, type ConnectedPeripheral } from "@gaborwnuk/axs-core";
 
 import { loadDeviceKey, saveDeviceKey } from "../key-store";
 

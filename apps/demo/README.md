@@ -1,6 +1,6 @@
 # AXS Probe (demo app)
 
-Expo app demonstrating [`@axs/core`](../../packages/axs-core) end to end: find a
+Expo app demonstrating [`@gaborwnuk/axs-core`](../../packages/axs-core) end to end: find a
 SRAM AXS component, pair with it, and read **live gear** — plus a ride dashboard
 with GPS speed, and the reconnaissance views used to map the protocol.
 
@@ -25,7 +25,7 @@ not work**. You need a development build.
 ```bash
 # from the repo root
 npm install
-npm run build --workspace=@axs/core
+npm run build --workspace=@gaborwnuk/axs-core
 
 cd apps/demo
 npx expo prebuild          # generates ios/ and android/

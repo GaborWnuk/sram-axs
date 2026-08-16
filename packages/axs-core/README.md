@@ -1,4 +1,4 @@
-# @axs/core
+# @gaborwnuk/axs-core
 
 Transport-agnostic library for reading **SRAM AXS** components over Bluetooth Low
 Energy: identification, GATT reconnaissance, the SRAMBond pairing handshake, and
@@ -17,7 +17,7 @@ under Hermes, so it works in React Native, plain Node and the browser.
 ## Install
 
 ```bash
-npm install @axs/core
+npm install @gaborwnuk/axs-core
 ```
 
 You supply the BLE stack — the library never imports one. For React Native, copy
@@ -35,7 +35,7 @@ import {
   createBond,
   createSrambondDecoder,
   StateAggregator,
-} from "@axs/core";
+} from "@gaborwnuk/axs-core";
 
 const probe = new AxsProbe(myTransport);
 await probe.startScan();

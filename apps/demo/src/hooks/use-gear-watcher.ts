@@ -25,7 +25,7 @@ import {
   type BleTransport,
   type GearReading,
   type GearWatcherStatus,
-} from "@axs/core";
+} from "@gaborwnuk/axs-core";
 
 import { loadDeviceKey } from "../key-store";
 

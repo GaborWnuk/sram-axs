@@ -1,9 +1,9 @@
 {
-  "name": "@axs/cli",
+  "name": "@gaborwnuk/axs-cli",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Node CLI for probing SRAM AXS components over macOS/Linux/Windows BLE. Validates @axs/core against real hardware without a phone.",
+  "description": "Node CLI for probing SRAM AXS components over macOS/Linux/Windows BLE. Validates @gaborwnuk/axs-core against real hardware without a phone.",
   "bin": {
     "axs": "./src/cli.ts"
   },
@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@axs/core": "*",
+    "@gaborwnuk/axs-core": "*",
     "@stoprocent/noble": "^2.6.5"
   },
   "devDependencies": {

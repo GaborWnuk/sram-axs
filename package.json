@@ -11,14 +11,14 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "npm run build --workspace=@axs/core",
-    "test": "npm run test --workspace=@axs/core",
-    "test:watch": "npm run test:watch --workspace=@axs/core",
+    "build": "npm run build --workspace=@gaborwnuk/axs-core",
+    "test": "npm run test --workspace=@gaborwnuk/axs-core",
+    "test:watch": "npm run test:watch --workspace=@gaborwnuk/axs-core",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint .",
-    "demo": "npm run start --workspace=@axs/demo",
-    "cli": "npm run axs -w @axs/cli --",
-    "scan": "npm run axs -w @axs/cli -- scan",
+    "demo": "npm run start --workspace=@gaborwnuk/axs-demo",
+    "cli": "npm run axs -w @gaborwnuk/axs-cli --",
+    "scan": "npm run axs -w @gaborwnuk/axs-cli -- scan",
     "lint:fix": "eslint . --fix",
     "check": "npm run lint && npm run typecheck && npm test && npm run build"
   },

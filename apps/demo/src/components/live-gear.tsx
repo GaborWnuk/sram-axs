@@ -29,7 +29,7 @@
 
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
-import { toHex, watchLiveState } from "@axs/core";
+import { toHex, watchLiveState } from "@gaborwnuk/axs-core";
 
 import { forgetDeviceKey } from "../key-store";
 import { usePairing } from "../hooks/use-pairing";

@@ -1,18 +1,20 @@
 {
-  "name": "@axs/core",
+  "name": "@gaborwnuk/axs-core",
   "version": "0.1.0",
-  "description": "Transport-agnostic reconnaissance and decoding library for SRAM AXS components (BLE + ANT+ Shifting profile). React Native friendly.",
+  "description": "Read live state — including current gear — from SRAM AXS components over Bluetooth Low Energy. Zero runtime dependencies; runs under Node, Hermes and the browser.",
   "keywords": [
     "sram",
     "axs",
     "eagle",
     "transmission",
     "bicycle",
+    "cycling",
     "derailleur",
+    "drivetrain",
     "ble",
     "bluetooth",
-    "ant+",
-    "shifting",
+    "bluetooth-low-energy",
+    "gatt",
     "react-native"
   ],
   "license": "MPL-2.0",
@@ -31,7 +33,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "sideEffects": false,
   "scripts": {
@@ -49,5 +52,21 @@
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   },
-  "author": "Gabor Wnuk <gabor.wnuk@me.com>"
+  "author": "Gabor Wnuk <gabor.wnuk@me.com>",
+  "homepage": "https://github.com/GaborWnuk/sram-axs#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GaborWnuk/sram-axs.git",
+    "directory": "packages/axs-core"
+  },
+  "bugs": {
+    "url": "https://github.com/GaborWnuk/sram-axs/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=20"
+  }
 }

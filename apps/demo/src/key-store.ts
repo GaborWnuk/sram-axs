@@ -21,7 +21,7 @@
  */
 
 import * as SecureStore from "expo-secure-store";
-import { fromHex, toHex } from "@axs/core";
+import { fromHex, toHex } from "@gaborwnuk/axs-core";
 
 /** SecureStore keys must be alphanumeric plus `.-_`; device ids may not be. */
 function storageKey(deviceId: string): string {
