@@ -59,3 +59,6 @@ coverage/
 
 # Test analytics report (generated in CI)
 test-report.junit.xml
+
+# Release tarballs produced by `npm pack` during the release workflow.
+dist-artifacts/

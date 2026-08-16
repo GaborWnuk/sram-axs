@@ -71,8 +71,14 @@ jobs:
 
       # The same tarball `npm publish` would upload, attached so the release is
       # inspectable without trusting the registry copy.
+      #
+      # `--pack-destination` does not create the directory, it only writes into
+      # it, so without the mkdir npm fails with ENOENT on the .tgz path.
       - name: Pack tarball
-        run: npm pack --workspace=@gaborwnuk/axs-core --pack-destination ./dist-artifacts
+        run: |
+          mkdir -p dist-artifacts
+          npm pack --workspace=@gaborwnuk/axs-core --pack-destination ./dist-artifacts
+          ls -l dist-artifacts
 
       - name: Create release
         env:
