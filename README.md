@@ -161,10 +161,15 @@ its own with exponential backoff and carries on.
 decryption and the reconnects.
 
 ```ts
-import { GearWatcher } from "@gaborwnuk/axs-core";
+import { GearWatcher, type BleTransport } from "@gaborwnuk/axs-core";
+
+// You supply the BLE stack; the library never imports one. See "Transports".
+declare const transport: BleTransport;
+declare const deviceId: string;
+declare const deviceKey: Uint8Array; // 16 bytes, from `bond` or a previous session
 
 const watcher = new GearWatcher(transport, deviceId, {
-  deviceKey,                 // 16 bytes, from `bond` or a previous session
+  deviceKey,
   pollIntervalMs: 250,       // ≈4 Hz, the cadence the official app uses
 });
 
@@ -195,10 +200,19 @@ React Native.
 ### Pairing from your own code
 
 ```ts
-import { createBond, GearWatcher } from "@gaborwnuk/axs-core";
+import { createBond, type BleTransport } from "@gaborwnuk/axs-core";
+
+declare const transport: BleTransport;
+declare const deviceId: string;
+declare function askTheRider(message: string): Promise<void>;
+declare function saveKeyForDevice(id: string, key: Uint8Array): Promise<void>;
 
 const peripheral = await transport.connect(deviceId);
+
 const deviceKey = await createBond(peripheral, {
+  // Must be a CSPRNG — the ephemeral private key has to be unguessable.
+  // Node 19+ and browsers provide crypto.getRandomValues; Hermes does not, so
+  // React Native needs a native source such as expo-crypto's getRandomBytes.
   randomBytes: (n) => crypto.getRandomValues(new Uint8Array(n)),
   waitForPairingMode: async () => {
     await askTheRider("Hold the AXS button until the light blinks");
@@ -234,12 +248,21 @@ The simulator speaks the real AXS shapes, encryption included, so the whole
 pipeline — bond, decrypt, gear — runs with no bike:
 
 ```ts
-import { FakeTransport, simulatedDerailleur, SIMULATOR_DEVICE_KEY, GearWatcher } from "@gaborwnuk/axs-core";
+import {
+  FakeTransport,
+  simulatedDerailleur,
+  SIMULATOR_DEVICE_KEY,
+  GearWatcher,
+} from "@gaborwnuk/axs-core";
 
+// No `declare` here: this snippet runs as-is, with no hardware.
 const transport = new FakeTransport([simulatedDerailleur()]);
 const watcher = new GearWatcher(transport, "sim-rd-0001", {
   deviceKey: SIMULATOR_DEVICE_KEY,
 });
+
+watcher.events.on("gear", ({ gear }) => console.log("gear", gear));
+watcher.start();
 ```
 
 ## What works today

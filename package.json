@@ -20,7 +20,8 @@
     "cli": "npm run axs -w @gaborwnuk/axs-cli --",
     "scan": "npm run axs -w @gaborwnuk/axs-cli -- scan",
     "lint:fix": "eslint . --fix",
-    "check": "npm run build && npm run lint && npm run typecheck && npm test"
+    "check": "npm run build && npm run lint && npm run typecheck && npm test && npm run check:docs",
+    "check:docs": "node scripts/check-docs.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

@@ -61,6 +61,11 @@ jobs:
       - name: Test with coverage
         run: npm run test:coverage --workspace=@gaborwnuk/axs-core
 
+      # Compiles every ```ts block in the docs against the emitted types, so an
+      # example cannot drift out of date or ship half-written.
+      - name: Type-check documentation examples
+        run: npm run check:docs
+
       # The package is published from this build, so a tarball that does not
       # resolve is worth catching now rather than at release time.
       - name: Verify the published entry points resolve

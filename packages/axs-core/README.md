@@ -29,38 +29,113 @@ npx expo install react-native-ble-plx
 
 ## Reading gear, end to end
 
+You supply the BLE stack; this library never imports one. `BleTransport` is the
+only interface you have to satisfy — see [Transports](#transports).
+
+### 1. Pair once
+
+The component must be in pairing mode: hold its AXS button until the light
+blinks. This is the **only** call in the library that writes to the device.
+
+```ts
+import { createBond, type BleTransport } from "@gaborwnuk/axs-core";
+
+declare const transport: BleTransport;
+declare const deviceId: string;
+declare function promptTheRider(message: string): Promise<void>;
+
+const peripheral = await transport.connect(deviceId);
+
+const deviceKey = await createBond(peripheral, {
+  // Must be a CSPRNG. `Math.random` would be a real vulnerability here: the
+  // ephemeral private key has to be unguessable. Node 19+ and browsers have
+  // `crypto.getRandomValues`; Hermes does not, so React Native needs a native
+  // source such as expo-crypto's `getRandomBytes`.
+  randomBytes: (n) => crypto.getRandomValues(new Uint8Array(n)),
+  waitForPairingMode: () => promptTheRider("Hold the AXS button until it blinks"),
+});
+
+await peripheral.disconnect();
+```
+
+Store `deviceKey` — it is a credential. Reading with it never writes, so later
+sessions skip this step entirely. Bonding again makes the component mint a
+**fresh** key and invalidates this one.
+
+### 2. Read gear
+
+```ts
+import { GearWatcher, type BleTransport } from "@gaborwnuk/axs-core";
+
+declare const transport: BleTransport;
+declare const deviceId: string;
+declare const deviceKey: Uint8Array; // 16 bytes, from step 1
+
+const watcher = new GearWatcher(transport, deviceId, { deviceKey });
+
+watcher.events.on("gear", ({ gear, previous }) => {
+  console.log(`shifted ${previous ?? "?"} → ${gear}`);
+});
+
+watcher.start();
+// …later
+await watcher.stop();
+```
+
+`GearWatcher` owns its connection and reconnects on drops. If something else
+already holds the link — a `DeviceSession`, say — use `watchLiveState` instead
+and hand it that connection, because an AXS component serves one central at a
+time and a second connection closes the first:
+
+```ts
+import { watchLiveState, type DeviceSession } from "@gaborwnuk/axs-core";
+
+declare const session: DeviceSession;
+declare const deviceKey: Uint8Array;
+
+const stop = watchLiveState(session.link, {
+  deviceKey,
+  onState: (state) => console.log("gear", state.gearRear),
+});
+```
+
+> **Gear has to be polled, not subscribed to.** `d905000b` does notify, but the
+> payload is a single `0xff` byte — a doorbell saying state changed, not the
+> state itself. Only a *read* returns the encrypted frame. Both helpers above
+> poll for you; if you drive the GATT yourself, subscribing alone will produce a
+> steady stream of one-byte frames and a gear that never appears.
+
+### 3. Or fold everything into one state object
+
+`StateAggregator` collects every decoded value — serial, firmware, battery,
+MicroAdjust, gear — with provenance. Gear enters through a keyed decoder:
+
 ```ts
 import {
   AxsProbe,
-  createBond,
-  createSrambondDecoder,
   StateAggregator,
+  createSrambondDecoder,
+  LIVE_STATE_CHARACTERISTIC,
+  type BleTransport,
 } from "@gaborwnuk/axs-core";
 
-const probe = new AxsProbe(myTransport);
-await probe.startScan();
+declare const transport: BleTransport;
+declare const deviceId: string;
+declare const deviceKey: Uint8Array;
 
-// 1. Pair once. The component must be in pairing mode: hold its AXS button
-//    until the light blinks. This is the only step that writes to the device.
-const peripheral = await myTransport.connect(deviceId);
-const deviceKey = await createBond(peripheral, {
-  randomBytes: (n) => crypto.getRandomValues(new Uint8Array(n)),
-  waitForPairingMode: async () => promptTheRider(),
-});
-
-// 2. Teach the decoder registry the key. Everything downstream — the log view,
-//    StateAggregator, your dashboard — now sees gear with no further wiring.
+const probe = new AxsProbe(transport);
 probe.registry.add(createSrambondDecoder(deviceKey));
 
-// 3. Read.
 const session = await probe.probe(deviceId);
 const state = new StateAggregator(session.deviceId, session.deviceName, probe.registry);
+
 session.events.on("frame", (frame) => state.ingest(frame));
 state.events.on("shift", ({ from, to }) => console.log(`shifted ${from} → ${to}`));
-```
 
-Store `deviceKey` and you can skip step 1 on later connections — reading is then
-entirely read-only.
+// Required for gear: notifications alone carry no payload (see the note above),
+// so poll the live-state characteristic to turn reads into frames.
+const stopPolling = session.startPolling(250, (uuid) => uuid === LIVE_STATE_CHARACTERISTIC);
+```
 
 ## Design
 
@@ -78,10 +153,24 @@ written next week replays against a capture taken today, so you iterate at a des
 instead of on a bike.
 
 ```ts
+import {
+  SessionRecorder,
+  StateAggregator,
+  loadSession,
+  type DeviceSession,
+  type DecoderRegistry,
+} from "@gaborwnuk/axs-core";
+
+declare const session: DeviceSession;
+declare const registry: DecoderRegistry;
+
 const recorder = new SessionRecorder(session);
 recorder.start();
-// … later, with no hardware
+const json = recorder.toJSON(true); // persist this anywhere
+
+// … later, with no hardware and possibly a decoder written since
 const { frames } = loadSession(json);
+const state = new StateAggregator("replay", null, registry);
 for (const frame of frames) state.ingest(frame);
 ```
 
