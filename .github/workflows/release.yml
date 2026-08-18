@@ -1,13 +1,30 @@
 # Release: cut a GitHub release when a version tag is pushed.
 #
-#     npm version minor --workspace=@gaborwnuk/axs-core
-#     git commit -am "release: axs-core 0.2.0"
-#     git tag v0.2.0 && git push origin main --tags
+# Publishing to npm is deliberately NOT automated here, because an automation
+# token has to be rotated every 90 days and a long-lived publish credential
+# sitting in repository secrets is a bigger liability than the convenience is
+# worth. The manual runbook, so it lives next to the thing it describes:
 #
-# Publishing to npm is deliberately NOT automated here. It is done by hand (see
-# RELEASING.md), because an npm automation token has to be rotated every 90 days
-# and a long-lived publish credential sitting in repository secrets is a bigger
-# liability than the convenience is worth.
+#   1. npm version patch --workspace=@gaborwnuk/axs-core   # or minor / major
+#   2. npm run check                                       # same gate as CI
+#   3. npm pack --dry-run --workspace=@gaborwnuk/axs-core  # inspect the tarball
+#   4. commit, push, then publish, THEN tag — the generated release notes
+#      contain an install command, so the version must exist on the registry
+#      before the tag creates the release.
+#   5. npm publish --workspace=@gaborwnuk/axs-core --otp=<code>
+#   6. git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z
+#
+# Two things that will bite:
+#
+# * --workspace is required. A bare `npm publish` at the root targets
+#   sram-axs-workspace, which is "private": true, and fails with EPRIVATE.
+# * The account enforces 2FA for writes, so --otp is required and a successful
+#   `npm whoami` proves nothing about publish rights. Without it:
+#     npm error 403 Two-factor authentication or granular access token with
+#     npm error 403 bypass 2fa enabled is required to publish packages.
+#   The bypass-2FA granular token npm suggests instead is deliberately not used
+#   here: it is a standing publish credential on disk with a 90-day life, which
+#   is what ruled out automated publishing in the first place.
 #
 # This workflow therefore needs no secrets at all: it runs on the automatic
 # GITHUB_TOKEN, which is scoped to this repository and expires with the job.
