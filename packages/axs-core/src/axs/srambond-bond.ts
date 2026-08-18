@@ -68,7 +68,20 @@ const TRANSPORT_BLOB_LENGTH = KEY_LENGTH * 3;
  * `public = g^priv mod p`, serialised big-endian (the private key bytes are
  * interpreted little-endian, matching the reference implementation).
  */
+/**
+ * Every value on the wire is exactly one key wide. Getting a short or
+ * fragmented notification here is not a rounding error — it silently changes
+ * the integer, and therefore the shared secret, and the failure only surfaces
+ * later as a tag mismatch that points at the wrong layer.
+ */
+function assertKeyLength(value: Uint8Array, what: string): void {
+  if (value.length !== KEY_LENGTH) {
+    throw new Error(`SRAMBond ${what} must be ${KEY_LENGTH} bytes, got ${value.length}`);
+  }
+}
+
 export function computePublicKey(privateKey: Uint8Array): Uint8Array {
+  assertKeyLength(privateKey, "private key");
   const priv = bytesToBigInt(privateKey, "le");
   return bigIntToBytes(modPow(SRAMBOND_GENERATOR, priv, SRAMBOND_MODULUS), KEY_LENGTH, "be");
 }
@@ -79,8 +92,18 @@ export function computePublicKey(privateKey: Uint8Array): Uint8Array {
  * transported device key.
  */
 export function computeSharedSecret(privateKey: Uint8Array, devicePublicKey: Uint8Array): Uint8Array {
-  const priv = bytesToBigInt(privateKey, "le");
+  assertKeyLength(privateKey, "private key");
+  assertKeyLength(devicePublicKey, "device public key");
+
   const dev = bytesToBigInt(devicePublicKey, "be");
+  // 0 and 1 raise to themselves for any exponent, and p-1 collapses to ±1, so
+  // a peer sending one of them fixes the "shared" secret to a value it chose.
+  // Values at or above the modulus are simply not group elements.
+  if (dev <= 1n || dev >= SRAMBOND_MODULUS - 1n) {
+    throw new Error("SRAMBond device public key is degenerate or out of range");
+  }
+
+  const priv = bytesToBigInt(privateKey, "le");
   return bigIntToBytes(modPow(dev, priv, SRAMBOND_MODULUS), KEY_LENGTH, "be");
 }
 
@@ -219,6 +242,12 @@ export async function createBond(
     await peripheral.write(svc, chr, SRAMBOND_INIT, true);
 
     const privateKey = options.randomBytes(KEY_LENGTH);
+    if (privateKey.length !== KEY_LENGTH) {
+      throw new Error(
+        `randomBytes(${KEY_LENGTH}) returned ${privateKey.length} bytes. The private key must be ` +
+          `exactly ${KEY_LENGTH} bytes from a CSPRNG.`,
+      );
+    }
     const publicKey = computePublicKey(privateKey);
     step("write public key");
     await peripheral.write(svc, chr, publicKey, true);

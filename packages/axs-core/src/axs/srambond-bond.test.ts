@@ -8,14 +8,16 @@
 
 import { describe, expect, it, vi } from "vitest";
 
+import { bigIntToBytes } from "../crypto/dh.js";
 import { eaxEncrypt } from "../crypto/aes-eax.js";
 import { fromHex, toHex } from "../bytes.js";
-import { FakeTransport, SIMULATOR_DEVICE_KEY } from "../testing/fake-transport.js";
+import { FakeTransport, SIMULATOR_DEVICE_KEY, simulatedDerailleur } from "../testing/fake-transport.js";
 import type { ConnectedPeripheral } from "../transport.js";
 import { LIVE_STATE_CHARACTERISTIC, decodeSrambondState } from "./srambond.js";
 import {
   SRAMBOND_FINALIZE,
   SRAMBOND_INIT,
+  SRAMBOND_MODULUS,
   SRAMBOND_V1_CHARACTERISTIC,
   SRAMBOND_V1_SERVICE,
   computePublicKey,
@@ -199,10 +201,48 @@ describe("createBond against the simulated component", () => {
   });
 });
 
-describe("transport blob length", () => {
-  const secret = new Uint8Array(16).fill(0x11);
+/**
+ * Input validation on the one path in this library that writes to hardware.
+ *
+ * The handshake is unauthenticated by protocol design — the physical AXS-button
+ * gate is what actually protects it — so none of this is a break being fixed.
+ * It is defence in depth on values that arrive over a radio, plus failing at
+ * the point of the fault rather than three steps later as a tag mismatch.
+ */
+describe("handshake input validation", () => {
+  const goodPrivate = new Uint8Array(16).fill(0x33);
+  const goodPeer = computePublicKey(new Uint8Array(16).fill(0x44));
+
+  it("rejects a device public key that is not one key wide", () => {
+    // A fragmented or truncated notification does not round — it becomes a
+    // different integer, and therefore a different (wrong) shared secret.
+    for (const wrong of [new Uint8Array(0), new Uint8Array(4), new Uint8Array(15), new Uint8Array(32)]) {
+      expect(() => computeSharedSecret(goodPrivate, wrong)).toThrow(/must be 16 bytes/);
+    }
+  });
+
+  it("rejects degenerate device public keys", () => {
+    const of = (n: bigint) => bigIntToBytes(n, 16, "be");
+    // 0 and 1 are fixed points under exponentiation; p-1 collapses to ±1. Each
+    // lets the peer pin the "shared" secret to a value it already knows.
+    for (const degenerate of [0n, 1n, SRAMBOND_MODULUS - 1n]) {
+      expect(() => computeSharedSecret(goodPrivate, of(degenerate))).toThrow(/degenerate or out of range/);
+    }
+    // At or above the modulus is not a group element at all.
+    expect(() => computeSharedSecret(goodPrivate, of(SRAMBOND_MODULUS))).toThrow(/degenerate or out of range/);
+  });
+
+  it("still derives a secret from a well-formed peer key", () => {
+    expect(computeSharedSecret(goodPrivate, goodPeer)).toHaveLength(16);
+  });
+
+  it("rejects a private key that is not one key wide", () => {
+    expect(() => computePublicKey(new Uint8Array(8))).toThrow(/private key must be 16 bytes/);
+    expect(() => computeSharedSecret(new Uint8Array(8), goodPeer)).toThrow(/private key must be 16 bytes/);
+  });
 
   it("rejects a transport blob that is not exactly 48 bytes", () => {
+    const secret = new Uint8Array(16).fill(0x11);
     for (const n of [0, 32, 47, 49, 64]) {
       expect(() => decryptTransportedKey(secret, new Uint8Array(n))).toThrow(/must be 48 bytes/);
     }
@@ -212,6 +252,7 @@ describe("transport blob length", () => {
     // The old `length < 32` guard let this through: 16-byte nonce, no
     // ciphertext, 16-byte tag that verifies — a zero-length key, reported as
     // success. Length is the only thing that catches it, since the tag is valid.
+    const secret = new Uint8Array(16).fill(0x11);
     const nonce = new Uint8Array(16).fill(0x22);
     const sealedEmpty = eaxEncrypt(secret, nonce, new Uint8Array(0), { tagLength: 16 });
 
@@ -220,5 +261,16 @@ describe("transport blob length", () => {
     blob32.set(sealedEmpty, 16);
 
     expect(() => decryptTransportedKey(secret, blob32)).toThrow(/must be 48 bytes/);
+  });
+
+  it("rejects a randomBytes implementation that returns the wrong length", async () => {
+    const transport = new FakeTransport([simulatedDerailleur()]);
+    const peripheral = await transport.connect("sim-rd-0001");
+
+    await expect(
+      createBond(peripheral, { randomBytes: () => new Uint8Array(8) }),
+    ).rejects.toThrow(/returned 8 bytes/);
+
+    await peripheral.disconnect();
   });
 });
