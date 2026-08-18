@@ -40,7 +40,13 @@
  */
 
 import { fromHex } from "../bytes.js";
-import { clearIntervalCompat, setIntervalCompat, setTimeoutCompat } from "../timers.js";
+import {
+  clearIntervalCompat,
+  clearTimeoutCompat,
+  setIntervalCompat,
+  setTimeoutCompat,
+  type TimerHandle,
+} from "../timers.js";
 import { eaxDecrypt } from "../crypto/aes-eax.js";
 import { bigIntToBytes, bytesToBigInt, modPow } from "../crypto/dh.js";
 import { DEVICE_INFORMATION_SERVICE, DIS_CHARACTERISTICS } from "../gatt/uuids.js";
@@ -62,6 +68,8 @@ export const SRAMBOND_FINALIZE = Uint8Array.from([0x73]);
 const KEY_LENGTH = 16;
 /** The key-transport blob: nonce ‖ ciphertext ‖ tag, one key width each. */
 const TRANSPORT_BLOB_LENGTH = KEY_LENGTH * 3;
+/** Reads allowed while reassembling it. Three suffice at the smallest MTU. */
+const MAX_TRANSPORT_READS = 8;
 
 /**
  * The client DH public key from a 16-byte private key, in wire form.
@@ -185,15 +193,19 @@ export async function createBond(
     const queued = inbox.shift();
     if (queued) return queued;
 
+    let timer: TimerHandle = null;
     const notified = await new Promise<Uint8Array | null>((resolve) => {
       deliver = resolve;
-      setTimeoutCompat(() => {
+      timer = setTimeoutCompat(() => {
         if (deliver === resolve) {
           deliver = null;
           resolve(null);
         }
       }, timeoutMs);
     });
+    // The notification usually wins the race, and the loser has to be cancelled
+    // or every awaited response leaves a timer armed for the full timeout.
+    if (timer !== null) clearTimeoutCompat(timer);
     if (notified) return notified;
 
     // No notification in time. Some components also allow a plain read.
@@ -260,7 +272,17 @@ export async function createBond(
     // The transport blob is 48 bytes; some stacks deliver it as one value,
     // others fragmented — accumulate until at least 48 bytes are present.
     let blob = await readValue();
-    while (blob.length < 48) {
+    for (let reads = 1; blob.length < TRANSPORT_BLOB_LENGTH; reads++) {
+      // A component that keeps answering with nothing makes no progress, and
+      // without a ceiling this spins on it indefinitely. Real fragmentation
+      // needs three notifications at the smallest MTU worth supporting.
+      if (reads > MAX_TRANSPORT_READS) {
+        throw new Error(
+          `SRAMBond: transport blob was still ${blob.length} bytes after ` +
+            `${MAX_TRANSPORT_READS} reads; expected ${TRANSPORT_BLOB_LENGTH}. ` +
+            `Is the component still in pairing mode?`,
+        );
+      }
       const more = await readValue();
       const merged = new Uint8Array(blob.length + more.length);
       merged.set(blob);
