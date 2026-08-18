@@ -41,8 +41,7 @@ apps/demo/           Expo app: scan, GATT explorer, raw logger, ride dashboard
   hardware.</em>
 </p>
 
-Published to npm as [`@gaborwnuk/axs-core`](https://www.npmjs.com/package/@gaborwnuk/axs-core);
-release steps are in [`RELEASING.md`](RELEASING.md).
+Published to npm as [`@gaborwnuk/axs-core`](https://www.npmjs.com/package/@gaborwnuk/axs-core).
 
 ## Start here
 
@@ -66,7 +65,7 @@ diagnostics — lives there, and it is the one surface a phone can actually reac
 
 ```bash
 npm install
-npm run check       # lint, typecheck, 186 unit tests, build — no hardware needed
+npm run check       # lint, typecheck, unit tests, build — no hardware needed
 ```
 
 Then either point it at a real component (see [Usage](#usage)) or run the whole
@@ -403,7 +402,7 @@ component that is not a drivetrain never carries a gear.
 
 | Command | Effect |
 |---|---|
-| `npm test` | Core unit tests (173, no hardware needed) |
+| `npm test` | Core unit tests — no hardware needed |
 | `npm run lint` | ESLint + typescript-eslint across the monorepo |
 | `npm run typecheck` | Typecheck all workspaces |
 | `npm run build` | Build `@gaborwnuk/axs-core` (ESM + CJS + types) |
