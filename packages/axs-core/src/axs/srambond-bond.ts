@@ -72,11 +72,6 @@ const TRANSPORT_BLOB_LENGTH = KEY_LENGTH * 3;
 const MAX_TRANSPORT_READS = 8;
 
 /**
- * The client DH public key from a 16-byte private key, in wire form.
- * `public = g^priv mod p`, serialised big-endian (the private key bytes are
- * interpreted little-endian, matching the reference implementation).
- */
-/**
  * Every value on the wire is exactly one key wide. Getting a short or
  * fragmented notification here is not a rounding error — it silently changes
  * the integer, and therefore the shared secret, and the failure only surfaces
@@ -88,6 +83,11 @@ function assertKeyLength(value: Uint8Array, what: string): void {
   }
 }
 
+/**
+ * The client DH public key from a 16-byte private key, in wire form.
+ * `public = g^priv mod p`, serialised big-endian (the private key bytes are
+ * interpreted little-endian, matching the reference implementation).
+ */
 export function computePublicKey(privateKey: Uint8Array): Uint8Array {
   assertKeyLength(privateKey, "private key");
   const priv = bytesToBigInt(privateKey, "le");
