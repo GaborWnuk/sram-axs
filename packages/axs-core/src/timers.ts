@@ -29,7 +29,16 @@ interface TimerGlobals {
 }
 
 function globals(): TimerGlobals {
-  return globalThis;
+  // Under `types: []` this file's own program declares no timers at all — the
+  // whole reason the shim exists — so the assertion is what makes it compile
+  // standalone. `typecheck:lib` fails without it.
+  //
+  // ESLint disagrees because its type-aware program also contains the test
+  // files, and a test importing vitest pulls ambient Node types in, at which
+  // point `globalThis` really does satisfy TimerGlobals. That wider view is
+  // exactly the borrowed context this shim must not depend on.
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+  return globalThis as unknown as TimerGlobals;
 }
 
 export function setTimeoutCompat(handler: () => void, ms: number): TimerHandle {

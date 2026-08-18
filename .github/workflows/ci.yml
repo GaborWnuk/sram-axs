@@ -58,6 +58,13 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # The library on its own terms, with test files excluded. A test that
+      # imports vitest drags ambient Node types into the program, which can make
+      # shipped source appear to compile when it only does so because something
+      # else declared the globals it uses. This catches that.
+      - name: Typecheck the published library in isolation
+        run: npm run typecheck:lib
+
       - name: Test with coverage
         run: npm run test:coverage --workspace=@gaborwnuk/axs-core
 

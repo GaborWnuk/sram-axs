@@ -20,9 +20,10 @@
     "cli": "npm run axs -w @gaborwnuk/axs-cli --",
     "scan": "npm run axs -w @gaborwnuk/axs-cli -- scan",
     "lint:fix": "eslint . --fix",
-    "check": "npm run build && npm run lint && npm run typecheck && npm test && npm run check:docs && npm run check:pipeline",
+    "check": "npm run build && npm run lint && npm run typecheck && npm run typecheck:lib && npm test && npm run check:docs && npm run check:pipeline",
     "check:pipeline": "npm run cli -- simulate --seconds 5 --assert",
-    "check:docs": "node scripts/check-docs.mjs"
+    "check:docs": "node scripts/check-docs.mjs",
+    "typecheck:lib": "npm run typecheck:lib --workspaces --if-present"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

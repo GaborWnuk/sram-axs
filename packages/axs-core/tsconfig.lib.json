@@ -1,0 +1,12 @@
+{
+  // The published library, on its own terms.
+  //
+  // The main tsconfig compiles tests too, and a test importing vitest drags
+  // ambient Node types into the program. That made src/timers.ts appear to
+  // compile when in fact it only did so because something else had declared
+  // the timer globals — an invariant this package's own docstring claims to
+  // hold. Excluding tests removes that borrowed context, so `typecheck:lib`
+  // fails if any shipped source needs types the package does not depend on.
+  "extends": "./tsconfig.json",
+  "exclude": ["dist", "node_modules", "src/**/*.test.ts"]
+}
