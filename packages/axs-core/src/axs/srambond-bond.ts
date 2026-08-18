@@ -60,6 +60,8 @@ export const SRAMBOND_INIT = fromHex("000102030405060708090a0b0c0d0e0f");
 export const SRAMBOND_FINALIZE = Uint8Array.from([0x73]);
 
 const KEY_LENGTH = 16;
+/** The key-transport blob: nonce ‖ ciphertext ‖ tag, one key width each. */
+const TRANSPORT_BLOB_LENGTH = KEY_LENGTH * 3;
 
 /**
  * The client DH public key from a 16-byte private key, in wire form.
@@ -87,8 +89,13 @@ export function computeSharedSecret(privateKey: Uint8Array, devicePublicKey: Uin
  * (`nonce16 ‖ ciphertext16 ‖ tag16`) using the DH shared secret.
  */
 export function decryptTransportedKey(sharedSecret: Uint8Array, transportBlob: Uint8Array): Uint8Array {
-  if (transportBlob.length < 32) {
-    throw new Error(`SRAMBond transport blob too short: ${transportBlob.length} bytes`);
+  // nonce(16) ‖ ciphertext(16) ‖ tag(16). Accepting anything shorter lets a
+  // 32-byte blob through as nonce+tag with an empty ciphertext, which decrypts
+  // to a zero-length "key" and reports success.
+  if (transportBlob.length !== TRANSPORT_BLOB_LENGTH) {
+    throw new Error(
+      `SRAMBond transport blob must be ${TRANSPORT_BLOB_LENGTH} bytes, got ${transportBlob.length}`,
+    );
   }
   const nonce = transportBlob.subarray(0, 16);
   const ciphertextAndTag = transportBlob.subarray(16);

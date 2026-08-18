@@ -8,6 +8,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 
+import { eaxEncrypt } from "../crypto/aes-eax.js";
 import { fromHex, toHex } from "../bytes.js";
 import { FakeTransport, SIMULATOR_DEVICE_KEY } from "../testing/fake-transport.js";
 import type { ConnectedPeripheral } from "../transport.js";
@@ -195,5 +196,29 @@ describe("createBond against the simulated component", () => {
     );
 
     expect(received).toHaveLength(0);
+  });
+});
+
+describe("transport blob length", () => {
+  const secret = new Uint8Array(16).fill(0x11);
+
+  it("rejects a transport blob that is not exactly 48 bytes", () => {
+    for (const n of [0, 32, 47, 49, 64]) {
+      expect(() => decryptTransportedKey(secret, new Uint8Array(n))).toThrow(/must be 48 bytes/);
+    }
+  });
+
+  it("does not accept a correctly-tagged empty blob as a key", () => {
+    // The old `length < 32` guard let this through: 16-byte nonce, no
+    // ciphertext, 16-byte tag that verifies — a zero-length key, reported as
+    // success. Length is the only thing that catches it, since the tag is valid.
+    const nonce = new Uint8Array(16).fill(0x22);
+    const sealedEmpty = eaxEncrypt(secret, nonce, new Uint8Array(0), { tagLength: 16 });
+
+    const blob32 = new Uint8Array(32);
+    blob32.set(nonce, 0);
+    blob32.set(sealedEmpty, 16);
+
+    expect(() => decryptTransportedKey(secret, blob32)).toThrow(/must be 48 bytes/);
   });
 });
