@@ -1,6 +1,6 @@
 {
   "name": "@gaborwnuk/axs-core",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Read live state — including current gear — from SRAM AXS components over Bluetooth Low Energy. Zero runtime dependencies; runs under Node, Hermes and the browser.",
   "keywords": [
     "sram",
