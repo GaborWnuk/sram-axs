@@ -12,6 +12,8 @@ import { bigIntToBytes } from "../crypto/dh.js";
 import { eaxEncrypt } from "../crypto/aes-eax.js";
 import { fromHex, toHex } from "../bytes.js";
 import { FakeTransport, SIMULATOR_DEVICE_KEY, simulatedDerailleur } from "../testing/fake-transport.js";
+import type { FakeCharacteristicSpec, FakeDeviceSpec } from "../testing/fake-transport.js";
+import { DEVICE_INFORMATION_SERVICE, DIS_CHARACTERISTICS } from "../gatt/uuids.js";
 import type { ConnectedPeripheral } from "../transport.js";
 import { LIVE_STATE_CHARACTERISTIC, decodeSrambondState } from "./srambond.js";
 import {
@@ -272,5 +274,234 @@ describe("handshake input validation", () => {
     ).rejects.toThrow(/returned 8 bytes/);
 
     await peripheral.disconnect();
+  });
+});
+
+/**
+ * The orchestration around the handshake, rather than the maths inside it.
+ *
+ * These paths only run against awkward hardware — a component that answers a
+ * read instead of notifying, one that splits the 48-byte blob across
+ * notifications, or a rider who takes their time reaching the bike — so none of
+ * them was exercised, which is exactly why they are worth pinning.
+ */
+describe("createBond orchestration against awkward components", () => {
+  /** A SRAMBond service whose responses are supplied by the test. */
+  function bondDevice(spec: Partial<FakeCharacteristicSpec>): FakeDeviceSpec {
+    return {
+      id: "sim-bond",
+      name: "SRAM 1234567890",
+      services: [
+        {
+          uuid: DEVICE_INFORMATION_SERVICE,
+          characteristics: [
+            { uuid: DIS_CHARACTERISTICS.manufacturerName, value: fromHex("53 52 41 4d"), properties: { read: true } },
+          ],
+        },
+        {
+          uuid: SRAMBOND_V1_SERVICE,
+          characteristics: [
+            { uuid: SRAMBOND_V1_CHARACTERISTIC, properties: { write: true, notify: true }, ...spec },
+          ],
+        },
+      ],
+    };
+  }
+
+  /** Device half of the handshake: its key pair, and the blob it hands back. */
+  function deviceSide() {
+    const devicePrivate = new Uint8Array(16).fill(0x5a);
+    const devicePublic = computePublicKey(devicePrivate);
+    const liveStateKey = new Uint8Array(16).fill(0xc3);
+
+    const blobFor = (clientPublic: Uint8Array) => {
+      const shared = computeSharedSecret(devicePrivate, clientPublic);
+      const nonce = new Uint8Array(16).fill(0x77);
+      const sealed = eaxEncrypt(shared, nonce, liveStateKey, { tagLength: 16 });
+      const blob = new Uint8Array(48);
+      blob.set(nonce, 0);
+      blob.set(sealed, 16);
+      return blob;
+    };
+    return { devicePublic, liveStateKey, blobFor };
+  }
+
+  it("falls back to a plain read when the component never notifies", async () => {
+    // Some stacks expose the characteristic as readable rather than pushing a
+    // notification. The handshake has to survive that without hanging.
+    const { devicePublic, liveStateKey, blobFor } = deviceSide();
+    let clientPublic = new Uint8Array(16);
+    let stage = 0;
+
+    const transport = new FakeTransport([
+      bondDevice({
+        properties: { read: true, write: true, notify: true },
+        onWrite: (value) => {
+          if (value.length === 16 && value[0] !== 0x00) clientPublic = new Uint8Array(value);
+        },
+        // Never notifies; answers reads in handshake order instead.
+        readGenerator: () => (stage++ === 0 ? devicePublic : blobFor(clientPublic)),
+      }),
+    ]);
+
+    const peripheral = await transport.connect("sim-bond");
+    const key = await createBond(peripheral, {
+      randomBytes: () => new Uint8Array(16).fill(0x11),
+      timeoutMs: 20,
+    });
+
+    expect(toHex(key, "")).toBe(toHex(liveStateKey, ""));
+    await peripheral.disconnect();
+  });
+
+  it("reassembles a transport blob split across notifications", async () => {
+    // BLE delivers at most one MTU per notification, so a 48-byte blob can
+    // arrive in pieces. Accumulating them is the difference between working and
+    // failing on a shorter-MTU phone.
+    const { devicePublic, liveStateKey, blobFor } = deviceSide();
+    let clientPublic = new Uint8Array(16);
+
+    const transport = new FakeTransport([
+      bondDevice({
+        onWrite: (value, notify) => {
+          if (value.length === 16 && value[0] === 0x00) return; // init
+          if (value.length !== 16) return;
+          clientPublic = new Uint8Array(value);
+          notify(devicePublic);
+          const blob = blobFor(clientPublic);
+          notify(blob.subarray(0, 20));
+          notify(blob.subarray(20, 41));
+          notify(blob.subarray(41));
+        },
+      }),
+    ]);
+
+    const peripheral = await transport.connect("sim-bond");
+    const key = await createBond(peripheral, {
+      randomBytes: () => new Uint8Array(16).fill(0x11),
+      timeoutMs: 50,
+    });
+
+    expect(toHex(key, "")).toBe(toHex(liveStateKey, ""));
+    await peripheral.disconnect();
+  });
+
+  it("gives up rather than reading forever when the blob never completes", async () => {
+    // A component answering with zero-length values makes no progress: the blob
+    // never grows and nothing ever times out, so only a ceiling ends it. The
+    // error has to name the real problem rather than surfacing later as a tag
+    // mismatch, which points at the crypto instead of the transfer.
+    const { devicePublic } = deviceSide();
+
+    const transport = new FakeTransport([
+      bondDevice({
+        onWrite: (value, notify) => {
+          if (value.length !== 16 || value[0] === 0x00) return;
+          notify(devicePublic);
+          for (let i = 0; i < 200; i++) notify(new Uint8Array(0));
+        },
+      }),
+    ]);
+
+    const peripheral = await transport.connect("sim-bond");
+    await expect(
+      createBond(peripheral, { randomBytes: () => new Uint8Array(16).fill(0x11), timeoutMs: 20 }),
+    ).rejects.toThrow(/still 0 bytes after 8 reads/);
+
+    await peripheral.disconnect();
+  });
+
+  it("keeps the link warm while waiting for the rider to press the button", async () => {
+    // The component hangs up an idle link at about three minutes, which is
+    // easily less than a rider takes to walk to the bike. A periodic read of a
+    // harmless characteristic is what stops the wait killing the handshake.
+    vi.useFakeTimers();
+    try {
+      const { devicePublic, blobFor } = deviceSide();
+      let clientPublic = new Uint8Array(16);
+
+      const transport = new FakeTransport([
+        bondDevice({
+          onWrite: (value, notify) => {
+            if (value.length !== 16 || value[0] === 0x00) return;
+            clientPublic = new Uint8Array(value);
+            notify(devicePublic);
+            notify(blobFor(clientPublic));
+          },
+        }),
+      ]);
+
+      const peripheral = await transport.connect("sim-bond");
+      const reads = vi.spyOn(peripheral, "read");
+
+      let release!: () => void;
+      const pending = createBond(peripheral, {
+        randomBytes: () => new Uint8Array(16).fill(0x11),
+        keepAliveIntervalMs: 1000,
+        waitForPairingMode: () => new Promise<void>((r) => { release = r; }),
+      });
+
+      await vi.advanceTimersByTimeAsync(3500);
+      const keepAlives = reads.mock.calls.filter(
+        ([, chr]) => chr === DIS_CHARACTERISTICS.manufacturerName,
+      ).length;
+      expect(keepAlives).toBeGreaterThanOrEqual(3);
+
+      release();
+      await vi.advanceTimersByTimeAsync(50);
+      await pending;
+
+      // And the interval must stop once the wait is over, or it outlives the bond.
+      const after = reads.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(reads.mock.calls.length).toBe(after);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("leaves no timers armed when a response arrives before its timeout", async () => {
+    // Every awaited response arms a timeout and races it against the
+    // notification. When the notification wins, the timer has to be cancelled —
+    // otherwise each step leaves one armed for the full timeout, which on a
+    // phone keeps work scheduled long after the bond finished.
+    vi.useFakeTimers();
+    try {
+      const { devicePublic, blobFor } = deviceSide();
+      let clientPublic = new Uint8Array(16);
+
+      const transport = new FakeTransport([
+        bondDevice({
+          // Answer late enough that createBond actually waits, rather than
+          // finding the value already queued.
+          onWrite: (value, notify) => {
+            if (value.length !== 16 || value[0] === 0x00) return;
+            clientPublic = new Uint8Array(value);
+            setTimeout(() => {
+              notify(devicePublic);
+              setTimeout(() => notify(blobFor(clientPublic)), 5);
+            }, 5);
+          },
+        }),
+      ]);
+
+      const peripheral = await transport.connect("sim-bond");
+      const baseline = vi.getTimerCount();
+
+      const pending = createBond(peripheral, {
+        randomBytes: () => new Uint8Array(16).fill(0x11),
+        timeoutMs: 60_000,
+      });
+      await vi.advanceTimersByTimeAsync(50);
+      await pending;
+
+      // With 60s timeouts, an uncancelled timer per awaited response would
+      // still be armed here long after the handshake returned.
+      expect(vi.getTimerCount()).toBe(baseline);
+
+      await peripheral.disconnect();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
