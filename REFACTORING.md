@@ -216,9 +216,10 @@ The breaking one. Do it with the net fully in place and already exercised.
 Three consumer files and one type import. That was the entire external cost, and
 it only stayed that small because the package was still at 0.1.
 
-**Outcome.** Shipped as 0.2.0 with migration notes in
-[CHANGELOG.md](CHANGELOG.md), and no deprecated accessors: getters would have
-stopped the state being plain data. The characterization snapshot changed, as
+**Outcome.** Shipped as 0.2.0 with the migration recorded in
+[ARCHITECTURE.md](ARCHITECTURE.md#move-a--open-the-state-model--landed-in-020),
+and no deprecated accessors: getters would have stopped the state being plain
+data. The characterization snapshot changed, as
 predicted, and the diff is the evidence — every previously captured value
 identical in its new place, plus MicroAdjust and rear trim, which the flat
 record had been decoding and then discarding for want of a slot. The demo now

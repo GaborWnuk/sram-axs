@@ -9,7 +9,7 @@ under Hermes, so it works in React Native, plain Node and the browser.
 
 > The AXS BLE protocol is not publicly documented. Everything this library
 > implements was worked out by observing a real component and is verified against
-> captured hardware data in the test suite. See [`PROTOCOL.md`](../../PROTOCOL.md)
+> captured hardware data in the test suite. See [`PROTOCOL.md`](https://github.com/GaborWnuk/sram-axs/blob/main/PROTOCOL.md)
 > for the full protocol description.
 
 ---
@@ -21,7 +21,7 @@ npm install @gaborwnuk/axs-core
 ```
 
 You supply the BLE stack — the library never imports one. For React Native, copy
-the adapter in [`apps/demo`](../../apps/demo):
+the adapter in [`apps/demo`](https://github.com/GaborWnuk/sram-axs/tree/main/apps/demo):
 
 ```bash
 npx expo install react-native-ble-plx
@@ -312,7 +312,7 @@ fails the build rather than the bike.
 **Mozilla Public License 2.0** — Copyright (c) 2026 Gabor Wnuk. Free for
 commercial and open-source use; keep the attribution, and modifications to
 covered files stay open source under the MPL. See the
-[LICENSE](../../LICENSE) at the repository root.
+[LICENSE](https://github.com/GaborWnuk/sram-axs/blob/main/LICENSE) at the repository root.
 
 Not affiliated with, endorsed by, or connected to SRAM LLC. "SRAM", "AXS" and
 "Eagle" are trademarks of SRAM LLC, used here only to describe interoperability.

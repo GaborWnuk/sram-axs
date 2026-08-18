@@ -323,9 +323,28 @@ major version and every consumer's time.
 
 Shipped without deprecated accessors: returning an object with getters would
 have stopped the state being plain data, and there were three consumer files.
-Migration is in [CHANGELOG.md](CHANGELOG.md). Two values that the flat record
-had nowhere to put — MicroAdjust and rear trim — were being decoded and
-discarded, and now land in the drivetrain domain.
+
+Migrating from 0.1 is mechanical — identity, firmware and battery stay where
+they were, and only the drivetrain values move:
+
+```diff
+- state.gearRear?.value
++ state.domains.drivetrain?.gearRear?.value
+
+- state.gearFront            state.totalRear            state.totalFront
++ state.domains.drivetrain?.gearFront   … ?.totalRear   … ?.totalFront
+
+- state.shiftCount
++ state.domains.drivetrain?.shiftCount ?? 0
+```
+
+Unchanged: `deviceId`, `deviceName`, `manufacturerName`, `modelNumber`,
+`serialNumber`, `hardwareRevision`, `firmwareRevision`, `softwareRevision`,
+`batteryPercent`, `batteryVolts`, `frameCount`, `lastUpdateAt`, and the `change`
+and `shift` events.
+
+Two values that the flat record had nowhere to put — MicroAdjust and rear trim —
+were being decoded and discarded, and now land in the drivetrain domain.
 
 ### Move B — generalise the watcher, keep the ergonomic wrapper  ✅ landed in 0.2.0
 
