@@ -25,6 +25,9 @@ import {
   simulatedDerailleur,
 } from "../testing/fake-transport.js";
 import { decodeDrivetrainConfig } from "./drivetrain.js";
+import { eaxEncrypt } from "../crypto/aes-eax.js";
+import { LIVE_STATE_CHARACTERISTIC } from "./srambond.js";
+import type { ConnectedPeripheral } from "../transport.js";
 import { LiveStateWatcher, watchLiveState } from "./live-state-watcher.js";
 
 /** The simulator's encrypted `drivetrain_config` channel. */
@@ -144,6 +147,108 @@ describe("watchLiveState with a supplied decoder", () => {
       expect(lengths.length).toBeGreaterThan(0);
       expect(lengths[0]).toBeGreaterThan(0);
       await peripheral.disconnect();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("watchLiveState failure ceiling", () => {
+  /** A peripheral whose reads always fail, as a dropped link behaves. */
+  function deadLink() {
+    return {
+      discoverServices: () =>
+        Promise.resolve([
+          { uuid: "svc", characteristics: [{ uuid: LIVE_STATE_CHARACTERISTIC, properties: {} }] },
+        ]),
+      read: () => Promise.reject(new Error("GATT error 133")),
+      write: () => Promise.resolve(),
+      subscribe: () => Promise.resolve(() => {}),
+      disconnect: () => Promise.resolve(),
+      onDisconnected: () => () => {},
+    } as unknown as ConnectedPeripheral;
+  }
+
+  it("stops after the configured number of consecutive failures", async () => {
+    // This variant borrows a link it does not own, so it cannot reconnect the
+    // way LiveStateWatcher does. Without a ceiling a dead link produces errors
+    // at the poll rate for as long as the app lives.
+    vi.useFakeTimers();
+    try {
+      const errors: string[] = [];
+      let gaveUp: string | null = null;
+
+      watchLiveState(deadLink(), {
+        deviceKey: new Uint8Array(16),
+        pollIntervalMs: 10,
+        maxConsecutiveFailures: 3,
+        onState: () => {},
+        onError: (e) => errors.push(e.message),
+        onGiveUp: (e) => { gaveUp = e.message; },
+      });
+
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(errors).toHaveLength(3);
+      expect(gaveUp).toMatch(/failed 3 times in a row/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("resets the counter after a successful read", async () => {
+    // Transient failures are normal on BLE; only an unbroken run should count.
+    vi.useFakeTimers();
+    try {
+      const key = new Uint8Array(16).fill(0x2a);
+      const nonce = new Uint8Array(16).fill(0x5);
+      const sealed = eaxEncrypt(key, nonce, Uint8Array.from([0xa8, 0x01, 0x07]), { tagLength: 16 });
+      const frame = new Uint8Array(16 + sealed.length);
+      frame.set(nonce, 0);
+      frame.set(sealed, 16);
+
+      let n = 0;
+      const flaky = {
+        ...deadLink(),
+        // fail, fail, succeed, then fail forever
+        read: () => (n++ === 2 ? Promise.resolve(frame) : Promise.reject(new Error("GATT error 133"))),
+      } as unknown as ConnectedPeripheral;
+
+      let gaveUp = false;
+      const states: number[] = [];
+      watchLiveState(flaky, {
+        deviceKey: key,
+        pollIntervalMs: 10,
+        maxConsecutiveFailures: 3,
+        onState: (s) => states.push(s.gearRear ?? -1),
+        onGiveUp: () => { gaveUp = true; },
+      });
+
+      await vi.advanceTimersByTimeAsync(35);
+      expect(states).toEqual([7]);
+      expect(gaveUp).toBe(false); // the success broke the run of two
+
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(gaveUp).toBe(true); // three more in a row does trip it
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("polls indefinitely when the ceiling is disabled", async () => {
+    vi.useFakeTimers();
+    try {
+      const errors: string[] = [];
+      watchLiveState(deadLink(), {
+        deviceKey: new Uint8Array(16),
+        pollIntervalMs: 10,
+        maxConsecutiveFailures: 0,
+        onState: () => {},
+        onError: (e) => errors.push(e.message),
+      });
+
+      await vi.advanceTimersByTimeAsync(200);
+      expect(errors.length).toBeGreaterThan(10);
     } finally {
       vi.useRealTimers();
     }

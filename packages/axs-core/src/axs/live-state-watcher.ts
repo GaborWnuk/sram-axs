@@ -291,8 +291,19 @@ export interface WatchLiveStateOptions<T = DrivetrainStatus> {
   pollIntervalMs?: number;
   /** Called for every successful decode, not only on change. */
   onState: (state: T) => void;
-  /** Called when a read or decode fails. Polling continues regardless. */
+  /** Called when a read or decode fails. Polling continues until the ceiling. */
   onError?: (error: Error) => void;
+  /**
+   * Consecutive failures tolerated before polling gives up, or 0 for no
+   * ceiling. Default 20 — five seconds at the default interval.
+   *
+   * This borrows a connection it does not own, so it cannot reconnect the way
+   * {@link LiveStateWatcher} does. Without a ceiling a dead link produces
+   * errors at the poll rate indefinitely; one successful read resets it.
+   */
+  maxConsecutiveFailures?: number;
+  /** Called once when the ceiling is reached and polling has stopped. */
+  onGiveUp?: (error: Error) => void;
 }
 
 /**
@@ -331,12 +342,35 @@ export function watchLiveState<T>(
   // DrivetrainStatus; the generic overload requires the caller to supply one.
   const decode = options.decode ?? (decodeDrivetrainStatus as (plaintext: Uint8Array) => T);
 
+  const maxFailures = options.maxConsecutiveFailures ?? 20;
+
   let stopped = false;
   let inFlight = false;
   let serviceUuid: string | null = null;
+  let failures = 0;
+
+  const stop = (): void => {
+    stopped = true;
+    clearIntervalCompat(timer);
+  };
 
   const fail = (error: unknown): void => {
-    if (!stopped) options.onError?.(error instanceof Error ? error : new Error(String(error)));
+    if (stopped) return;
+    const err = error instanceof Error ? error : new Error(String(error));
+    options.onError?.(err);
+
+    // A borrowed link cannot be rebuilt from here — whoever owns it has to
+    // notice and reconnect. Polling a corpse forever just buries that signal
+    // under four errors a second.
+    if (maxFailures > 0 && ++failures >= maxFailures) {
+      stop();
+      options.onGiveUp?.(
+        new Error(
+          `Live state failed ${failures} times in a row; giving up on this ` +
+            `connection. Last error: ${err.message}`,
+        ),
+      );
+    }
   };
 
   const tick = async (): Promise<void> => {
@@ -360,7 +394,9 @@ export function watchLiveState<T>(
       }
 
       const frame = await peripheral.read(serviceUuid, characteristic);
-      if (!stopped) options.onState(decode(decryptLiveStateFrame(options.deviceKey, frame)));
+      const state = decode(decryptLiveStateFrame(options.deviceKey, frame));
+      failures = 0;
+      if (!stopped) options.onState(state);
     } catch (error) {
       fail(error);
     } finally {
@@ -368,11 +404,8 @@ export function watchLiveState<T>(
     }
   };
 
-  void tick();
   const timer = setIntervalCompat(() => void tick(), intervalMs);
+  void tick();
 
-  return () => {
-    stopped = true;
-    clearIntervalCompat(timer);
-  };
+  return stop;
 }
