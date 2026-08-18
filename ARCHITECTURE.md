@@ -16,8 +16,10 @@ should end up before that assumption becomes load-bearing.
 > excluded from the documentation type-check that covers `README.md` and the
 > package READMEs. The parts that have landed are covered by it.
 
-For how each move gets sequenced and proven — blast radius, what validates it,
-and what needs hardware — see [REFACTORING.md](REFACTORING.md).
+Each move below records what it cost and what proved it. The rule throughout:
+a refactor is only done when the derailleur path is demonstrably unbroken —
+which the captured-frame fixtures and the simulator can establish without
+hardware.
 
 ---
 
@@ -463,7 +465,10 @@ the keyless decoder registry both survive that; a closed record with
 Done, in 0.2.0, in ascending order of risk so the safety net was exercised on
 cheap changes first:
 
-1. ✅ **Phase 0** — the safety net itself. See [REFACTORING.md](REFACTORING.md).
+1. ✅ **Phase 0** — the safety net itself: a pinned public API surface, a
+   characterization test replaying the reference capture end to end, and
+   `simulate --assert` as a CI gate. Each was verified by reintroducing the
+   failure it exists to catch.
 2. ✅ **Message profile registry (Move C).** Library-only; no app consumers.
 3. ✅ **Generalise the watcher (Move B).** Non-breaking; `GearWatcher` retained.
 4. ✅ **Open the state model (Move A).** Breaking; 0.2.0.

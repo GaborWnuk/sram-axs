@@ -62,3 +62,6 @@ test-report.junit.xml
 
 # Release tarballs produced by `npm pack` during the release workflow.
 dist-artifacts/
+
+# Working notes on the architecture migration — kept locally, not published.
+REFACTORING.md
