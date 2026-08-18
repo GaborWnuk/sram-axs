@@ -153,15 +153,15 @@ describe("watchLiveState with a supplied decoder", () => {
   });
 });
 
-describe("watchLiveState failure ceiling", () => {
+describe("watchLiveState on a failing link", () => {
   /** A peripheral whose reads always fail, as a dropped link behaves. */
-  function deadLink() {
+  function deadLink(read?: () => Promise<Uint8Array>) {
     return {
       discoverServices: () =>
         Promise.resolve([
           { uuid: "svc", characteristics: [{ uuid: LIVE_STATE_CHARACTERISTIC, properties: {} }] },
         ]),
-      read: () => Promise.reject(new Error("GATT error 133")),
+      read: read ?? (() => Promise.reject(new Error("GATT error 133"))),
       write: () => Promise.resolve(),
       subscribe: () => Promise.resolve(() => {}),
       disconnect: () => Promise.resolve(),
@@ -169,10 +169,56 @@ describe("watchLiveState failure ceiling", () => {
     } as unknown as ConnectedPeripheral;
   }
 
-  it("stops after the configured number of consecutive failures", async () => {
-    // This variant borrows a link it does not own, so it cannot reconnect the
-    // way LiveStateWatcher does. Without a ceiling a dead link produces errors
-    // at the poll rate for as long as the app lives.
+  it("backs off instead of erroring at the poll rate forever", async () => {
+    // This variant borrows a link it did not open, so it cannot reconnect the
+    // way LiveStateWatcher does. Polling a dead one at 4 Hz buries the signal
+    // its owner needs; spacing the retries out is what makes it survivable.
+    vi.useFakeTimers();
+    try {
+      const errors: number[] = [];
+      const stop = watchLiveState(deadLink(), {
+        deviceKey: new Uint8Array(16),
+        pollIntervalMs: 250,
+        reconnectPolicy: { initialDelayMs: 500, maxDelayMs: 15_000, factor: 2, jitter: false },
+        onState: () => {},
+        onError: () => errors.push(Date.now()),
+      });
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      stop();
+
+      // At the poll rate this would be about forty errors in ten seconds.
+      // Backing off 500ms, 1s, 2s, 4s, 8s gets nowhere near that.
+      expect(errors.length).toBeLessThan(10);
+      expect(errors.length).toBeGreaterThan(2);
+
+      const gaps = errors.slice(1).map((t, i) => t - errors[i]!);
+      expect(gaps[gaps.length - 1]!).toBeGreaterThan(gaps[0]!);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps retrying by default, because the owner decides when to give up", async () => {
+    vi.useFakeTimers();
+    try {
+      let gaveUp = false;
+      const stop = watchLiveState(deadLink(), {
+        deviceKey: new Uint8Array(16),
+        reconnectPolicy: { jitter: false },
+        onState: () => {},
+        onGiveUp: () => { gaveUp = true; },
+      });
+
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(gaveUp).toBe(false);
+      stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops after a ceiling when one is asked for", async () => {
     vi.useFakeTimers();
     try {
       const errors: string[] = [];
@@ -180,14 +226,14 @@ describe("watchLiveState failure ceiling", () => {
 
       watchLiveState(deadLink(), {
         deviceKey: new Uint8Array(16),
-        pollIntervalMs: 10,
         maxConsecutiveFailures: 3,
+        reconnectPolicy: { initialDelayMs: 10, jitter: false },
         onState: () => {},
         onError: (e) => errors.push(e.message),
         onGiveUp: (e) => { gaveUp = e.message; },
       });
 
-      await vi.advanceTimersByTimeAsync(1000);
+      await vi.advanceTimersByTimeAsync(5_000);
 
       expect(errors).toHaveLength(3);
       expect(gaveUp).toMatch(/failed 3 times in a row/);
@@ -196,7 +242,7 @@ describe("watchLiveState failure ceiling", () => {
     }
   });
 
-  it("resets the counter after a successful read", async () => {
+  it("resets the failure run after a successful read", async () => {
     // Transient failures are normal on BLE; only an unbroken run should count.
     vi.useFakeTimers();
     try {
@@ -208,47 +254,29 @@ describe("watchLiveState failure ceiling", () => {
       frame.set(sealed, 16);
 
       let n = 0;
-      const flaky = {
-        ...deadLink(),
-        // fail, fail, succeed, then fail forever
-        read: () => (n++ === 2 ? Promise.resolve(frame) : Promise.reject(new Error("GATT error 133"))),
-      } as unknown as ConnectedPeripheral;
+      const flaky = deadLink(() =>
+        n++ === 2 ? Promise.resolve(frame) : Promise.reject(new Error("GATT error 133")),
+      );
 
       let gaveUp = false;
       const states: number[] = [];
+      // Delays chosen so the checkpoints are unambiguous: fail at 0, fail at
+      // 100, succeed at 300. Three fresh failures then need 310 + 100 + 200.
       watchLiveState(flaky, {
         deviceKey: key,
         pollIntervalMs: 10,
         maxConsecutiveFailures: 3,
+        reconnectPolicy: { initialDelayMs: 100, factor: 2, jitter: false },
         onState: (s) => states.push(s.gearRear ?? -1),
         onGiveUp: () => { gaveUp = true; },
       });
 
-      await vi.advanceTimersByTimeAsync(35);
+      await vi.advanceTimersByTimeAsync(350);
       expect(states).toEqual([7]);
       expect(gaveUp).toBe(false); // the success broke the run of two
 
-      await vi.advanceTimersByTimeAsync(1000);
+      await vi.advanceTimersByTimeAsync(5_000);
       expect(gaveUp).toBe(true); // three more in a row does trip it
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("polls indefinitely when the ceiling is disabled", async () => {
-    vi.useFakeTimers();
-    try {
-      const errors: string[] = [];
-      watchLiveState(deadLink(), {
-        deviceKey: new Uint8Array(16),
-        pollIntervalMs: 10,
-        maxConsecutiveFailures: 0,
-        onState: () => {},
-        onError: (e) => errors.push(e.message),
-      });
-
-      await vi.advanceTimersByTimeAsync(200);
-      expect(errors.length).toBeGreaterThan(10);
     } finally {
       vi.useRealTimers();
     }

@@ -43,9 +43,7 @@ import {
   type ReconnectPolicy,
 } from "../reconnect.js";
 import {
-  clearIntervalCompat,
   clearTimeoutCompat,
-  setIntervalCompat,
   setTimeoutCompat,
   type TimerHandle,
 } from "../timers.js";
@@ -289,20 +287,24 @@ export interface WatchLiveStateOptions<T = DrivetrainStatus> {
   characteristic?: string;
   /** How often to read, in ms (default 250). */
   pollIntervalMs?: number;
+  /**
+   * How failed polls are spaced. A dead link otherwise errors at the poll rate
+   * for as long as the caller keeps it open — four times a second by default.
+   * Backing off keeps a recoverable link recoverable while a genuinely dead one
+   * goes quiet. One success resets the delay.
+   */
+  reconnectPolicy?: Partial<ReconnectPolicy>;
   /** Called for every successful decode, not only on change. */
   onState: (state: T) => void;
   /** Called when a read or decode fails. Polling continues until the ceiling. */
   onError?: (error: Error) => void;
   /**
-   * Consecutive failures tolerated before polling gives up, or 0 for no
-   * ceiling. Default 20 — five seconds at the default interval.
-   *
-   * This borrows a connection it does not own, so it cannot reconnect the way
-   * {@link LiveStateWatcher} does. Without a ceiling a dead link produces
-   * errors at the poll rate indefinitely; one successful read resets it.
+   * Consecutive failures after which polling stops for good. Defaults to
+   * unlimited, matching {@link DEFAULT_RECONNECT_POLICY} — a borrowed link can
+   * come back, and whoever owns it decides when to give up on it.
    */
   maxConsecutiveFailures?: number;
-  /** Called once when the ceiling is reached and polling has stopped. */
+  /** Called once if `maxConsecutiveFailures` is reached and polling has stopped. */
   onGiveUp?: (error: Error) => void;
 }
 
@@ -342,27 +344,31 @@ export function watchLiveState<T>(
   // DrivetrainStatus; the generic overload requires the caller to supply one.
   const decode = options.decode ?? (decodeDrivetrainStatus as (plaintext: Uint8Array) => T);
 
-  const maxFailures = options.maxConsecutiveFailures ?? 20;
+  const policy: ReconnectPolicy = { ...DEFAULT_RECONNECT_POLICY, ...options.reconnectPolicy };
+  // Unlimited by default, matching DEFAULT_RECONNECT_POLICY.maxAttempts: a
+  // borrowed link can come back, and its owner decides when to abandon it.
+  // Non-positive is also treated as unlimited rather than "give up at once".
+  const configuredMax = options.maxConsecutiveFailures ?? 0;
+  const maxFailures = configuredMax > 0 ? configuredMax : Number.POSITIVE_INFINITY;
 
   let stopped = false;
   let inFlight = false;
   let serviceUuid: string | null = null;
   let failures = 0;
+  let timer: TimerHandle = null;
 
   const stop = (): void => {
     stopped = true;
-    clearIntervalCompat(timer);
+    if (timer !== null) clearTimeoutCompat(timer);
   };
 
   const fail = (error: unknown): void => {
     if (stopped) return;
+    failures++;
     const err = error instanceof Error ? error : new Error(String(error));
     options.onError?.(err);
 
-    // A borrowed link cannot be rebuilt from here — whoever owns it has to
-    // notice and reconnect. Polling a corpse forever just buries that signal
-    // under four errors a second.
-    if (maxFailures > 0 && ++failures >= maxFailures) {
+    if (failures >= maxFailures) {
       stop();
       options.onGiveUp?.(
         new Error(
@@ -395,6 +401,7 @@ export function watchLiveState<T>(
 
       const frame = await peripheral.read(serviceUuid, characteristic);
       const state = decode(decryptLiveStateFrame(options.deviceKey, frame));
+      // Rediscover after a failure: the service handle may not survive a drop.
       failures = 0;
       if (!stopped) options.onState(state);
     } catch (error) {
@@ -404,8 +411,18 @@ export function watchLiveState<T>(
     }
   };
 
-  const timer = setIntervalCompat(() => void tick(), intervalMs);
-  void tick();
+  // Self-scheduling rather than a fixed interval, so the gap after a failure
+  // can grow. At the default policy that is 500ms, then 1s, 2s… capped at 15s,
+  // instead of hammering a dead link four times a second forever.
+  const schedule = (): void => {
+    if (stopped) return;
+    const delay = failures === 0 ? intervalMs : nextBackoffDelay(failures, policy);
+    timer = setTimeoutCompat(() => {
+      void tick().finally(schedule);
+    }, delay);
+  };
+
+  void tick().finally(schedule);
 
   return stop;
 }
