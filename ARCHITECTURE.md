@@ -16,10 +16,10 @@ should end up before that assumption becomes load-bearing.
 > excluded from the documentation type-check that covers `README.md` and the
 > package READMEs. The parts that have landed are covered by it.
 
-Each move below records what it cost and what proved it. The rule throughout:
-a refactor is only done when the derailleur path is demonstrably unbroken —
-which the captured-frame fixtures and the simulator can establish without
-hardware.
+The rule throughout: a refactor is only done when the derailleur path is
+demonstrably unbroken, which the captured-frame fixtures and the simulator can
+establish without hardware. Moves that have landed say what proved them; the
+ones still ahead say what would have to.
 
 ---
 

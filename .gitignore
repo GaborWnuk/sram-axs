@@ -63,5 +63,6 @@ test-report.junit.xml
 # Release tarballs produced by `npm pack` during the release workflow.
 dist-artifacts/
 
-# Working notes on the architecture migration — kept locally, not published.
-REFACTORING.md
+# Local working notes. Anchored to the repository root so a contributor's
+# notes/REFACTORING.md or docs/REFACTORING.md is not silently swallowed.
+/REFACTORING.md
