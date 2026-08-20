@@ -8,6 +8,10 @@
 Read live state — including **current gear** — from SRAM AXS components over
 Bluetooth Low Energy. A dependency-free TypeScript library, a CLI, and a demo app.
 
+How it was worked out — BLE reconnaissance, decompiling the Android app, and
+Frida — is written up on Medium: [*Talking To Hardware That Doesn't Want To
+Talk*](https://medium.com/@gaborwnuk/advanced-react-native-3-talking-to-hardware-that-doesnt-want-to-talk-344edae5a7c8).
+
 **Built for the AXS platform, not one product.** SRAM AXS shares one BLE stack,
 one pairing handshake and one message format across the range — derailleurs,
 drop-bar shifters and AXS Controllers, Reverb AXS seatposts, Flight Attendant
